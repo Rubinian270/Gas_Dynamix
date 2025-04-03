@@ -12,6 +12,26 @@ import { SelectGasModal } from "./select-gas-modal";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "@/components/ui/use-toast";
 
+// Add these enums at the top of the file, after imports
+enum PressureUnit {
+  BAR = "bar",
+  ATM = "atm",
+  PA = "Pa"
+}
+
+enum TemperatureUnit {
+  CELSIUS = "C",
+  FAHRENHEIT = "F",
+  KELVIN = "K"
+}
+
+enum FlowUnit {
+  KG_S = "kg/s",
+  
+  M3_s = "m³/s",
+  SLPM = "SLPM"
+}
+
 type InletCondition = {
   name: string;
   value: number | string;
@@ -148,6 +168,85 @@ export function CaseDetails({
       ...editedGasValues,
       [index]: parseFloat(value)
     });
+  };
+
+  // Save individual inlet condition
+  const saveInletCondition = async (index: number) => {
+    try {
+      setIsSaving(true);
+      const token = localStorage.getItem('access_token');
+      
+      if (!token) {
+        throw new Error('Authentication required');
+      }
+
+      const condition = inletConditions[index];
+      const conditionId = condition.id || index + 1;
+      
+      // Create payload based on the condition type
+      const payload = {
+        description: index === 0 ? editValue : undefined,
+        ambient_pressure: index === 1 ? Number(editValue) : undefined,
+        ambient_pressure_unit: index === 1 ? condition.unit : undefined,
+        ambient_temperature: index === 2 ? Number(editValue) : undefined,
+        ambient_temperature_unit: index === 2 ? condition.unit : undefined,
+        pressure: index === 3 ? Number(editValue) : undefined,
+        pressure_unit: index === 3 ? condition.unit : undefined,
+        temperature: index === 4 ? Number(editValue) : undefined,
+        temperature_unit: index === 4 ? condition.unit : undefined,
+        flow_value: index === 5 ? Number(editValue) : undefined,
+        flow_unit: index === 5 ? condition.unit : undefined,
+        flow_type: "Mass flow",
+        guarantee_point: false,
+        suppress: false
+      };
+      
+      const response = await fetch(
+        `https://gaxmixer-production.up.railway.app/projects/${projectId}/cases/${caseId}/inlet/${conditionId}/update/`, 
+        {
+          method: 'PUT',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(payload)
+        }
+      );
+      
+      if (!response.ok) {
+        throw new Error(`Failed to update ${condition.name}`);
+      }
+
+      // Update local state
+      const updatedInletConditions = [...inletConditions];
+      updatedInletConditions[index] = {
+        ...updatedInletConditions[index],
+        value: editValue
+      };
+      
+      setInletConditions(updatedInletConditions);
+      setEditingInlet(null);
+      
+      toast({
+        title: "Success",
+        description: `${condition.name} updated successfully`,
+        variant: "default",
+      });
+      
+      // Refresh data from server
+      if (onCalculate) {
+        onCalculate();
+      }
+    } catch (error) {
+      console.error('Error updating inlet condition:', error);
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to update inlet condition",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   // Save all inlet conditions
@@ -309,6 +408,90 @@ export function CaseDetails({
       toast({
         title: "Error",
         description: error instanceof Error ? error.message : "Failed to update gas compositions",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Save individual gas composition
+  const saveGasComposition = async (index: number) => {
+    try {
+      setIsSaving(true);
+      const token = localStorage.getItem('access_token');
+      
+      if (!token) {
+        throw new Error('Authentication required');
+      }
+
+      const gas = gasComposition[index];
+      if (!gas.gas_id) {
+        throw new Error('Gas ID is required');
+      }
+      
+      // Create payload with proper structure
+      const payload = {
+        amount: Number(editValue),
+        unit: gas.unit,
+        name: gas.name // Include the gas name in the payload
+      };
+
+      console.log('Saving gas composition:', {
+        projectId,
+        caseId,
+        gasId: gas.gas_id,
+        payload
+      });
+      
+      const response = await fetch(
+        `https://gaxmixer-production.up.railway.app/projects/${projectId}/cases/${caseId}/gases/${gas.gas_id}/update/`, 
+        {
+          method: 'PUT',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          },
+          body: JSON.stringify(payload)
+        }
+      );
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        console.error('Error response:', {
+          status: response.status,
+          statusText: response.statusText,
+          errorData
+        });
+        throw new Error(`Failed to update gas composition for ${gas.name}: ${response.status} ${response.statusText}`);
+      }
+
+      // Update local state
+      const updatedGasComposition = [...gasComposition];
+      updatedGasComposition[index] = {
+        ...updatedGasComposition[index],
+        value: Number(editValue)
+      };
+      
+      setGasComposition(updatedGasComposition);
+      setEditingGas(null);
+      
+      toast({
+        title: "Success",
+        description: `${gas.name} composition updated successfully`,
+        variant: "default",
+      });
+      
+      // Refresh data from server
+      if (onCalculate) {
+        onCalculate();
+      }
+    } catch (error) {
+      console.error('Error updating gas composition:', error);
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to update gas composition",
         variant: "destructive",
       });
     } finally {
@@ -506,15 +689,30 @@ export function CaseDetails({
                       </TableCell>
                       <TableCell className="py-0.5 text-xs text-blue-600">
                         {editingInletSection ? (
-                          <input
-                            type="text"
+                          <select
                             value={editedInletUnits[index] !== undefined ? editedInletUnits[index] : condition.unit}
                             onChange={(e) => setEditedInletUnits({
                               ...editedInletUnits,
                               [index]: e.target.value
                             })}
                             className="w-full bg-white border border-blue-200 p-0.5 text-xs focus:ring-1 focus:ring-blue-300 rounded"
-                          />
+                          >
+                            {condition.name.toLowerCase().includes('pressure') && (
+                              Object.values(PressureUnit).map(unit => (
+                                <option key={unit} value={unit}>{unit}</option>
+                              ))
+                            )}
+                            {condition.name.toLowerCase().includes('temperature') && (
+                              Object.values(TemperatureUnit).map(unit => (
+                                <option key={unit} value={unit}>{unit}</option>
+                              ))
+                            )}
+                            {condition.name.toLowerCase().includes('flow') && (
+                              Object.values(FlowUnit).map(unit => (
+                                <option key={unit} value={unit}>{unit}</option>
+                              ))
+                            )}
+                          </select>
                         ) : (
                           condition.unit
                         )}
