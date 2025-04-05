@@ -106,9 +106,9 @@ export function SelectGasModal({ isOpen, onClose, onSelect, initialSelected = []
       // Log the data being sent
       console.log('Selected Gas IDs:', selectedGasIds);
       console.log('Project ID:', effectiveProjectId);
-      console.log('Request URL:', `https://gaxmixer-production.up.railway.app/user/projects/${effectiveProjectId}/select-gases/`);
+      console.log('Request URL:', `https://gaxmixer-production.up.railway.app/user/projects/${effectiveProjectId}/select-gases-correct/`);
 
-      const response = await fetch(`https://gaxmixer-production.up.railway.app/user/projects/${effectiveProjectId}/select-gases/`, {
+      const response = await fetch(`https://gaxmixer-production.up.railway.app/user/projects/${effectiveProjectId}/select-gases-correct/`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
