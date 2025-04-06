@@ -19,6 +19,8 @@ interface InletCondition {
   value: number | string;
   unit: string;
   id?: number;
+  guarantee_point?: boolean;
+  suppress?: boolean;
 }
 
 interface GasComposition {
@@ -217,37 +219,49 @@ export default function ProjectDetailPage() {
                   name: "Description", 
                   value: inletCase.name || "Enter value", 
                   unit: "",
-                  id: inletCase.inlet_conditions[0]?.inlet_condition_id
+                  id: inletCase.inlet_conditions[0]?.inlet_condition_id,
+                  guarantee_point: inletCase.inlet_conditions[0]?.guarantee_point,
+                  suppress: inletCase.inlet_conditions[0]?.suppress
                 },
                 { 
                   name: "ambient_pressure", 
                   value: inletCondition.ambient_pressure || 0, 
                   unit: inletCondition.ambient_pressure_unit || "mbara",
-                  id: inletCase.inlet_conditions[0]?.inlet_condition_id
+                  id: inletCase.inlet_conditions[0]?.inlet_condition_id,
+                  guarantee_point: inletCase.inlet_conditions[0]?.guarantee_point,
+                  suppress: inletCase.inlet_conditions[0]?.suppress
                 },
                 { 
                   name: "ambient_temperature", 
                   value: inletCondition.ambient_temperature || 0, 
                   unit: inletCondition.ambient_temperature_unit || "°C",
-                  id: inletCase.inlet_conditions[0]?.inlet_condition_id
+                  id: inletCase.inlet_conditions[0]?.inlet_condition_id,
+                  guarantee_point: inletCase.inlet_conditions[0]?.guarantee_point,
+                  suppress: inletCase.inlet_conditions[0]?.suppress
                 },
                 { 
                   name: "pressure", 
                   value: inletCondition.pressure || 0, 
                   unit: inletCondition.pressure_unit || "Pa",
-                  id: inletCase.inlet_conditions[0]?.inlet_condition_id
+                  id: inletCase.inlet_conditions[0]?.inlet_condition_id,
+                  guarantee_point: inletCase.inlet_conditions[0]?.guarantee_point,
+                  suppress: inletCase.inlet_conditions[0]?.suppress
                 },
                 { 
                   name: "temperature", 
                   value: inletCondition.temperature || 0, 
                   unit: inletCondition.temperature_unit || "K",
-                  id: inletCase.inlet_conditions[0]?.inlet_condition_id
+                  id: inletCase.inlet_conditions[0]?.inlet_condition_id,
+                  guarantee_point: inletCase.inlet_conditions[0]?.guarantee_point,
+                  suppress: inletCase.inlet_conditions[0]?.suppress
                 },
                 { 
                   name: "mass_flow", 
                   value: inletCondition.flow_value || 0, 
                   unit: inletCondition.flow_unit || "kg/s",
-                  id: inletCase.inlet_conditions[0]?.inlet_condition_id
+                  id: inletCase.inlet_conditions[0]?.inlet_condition_id,
+                  guarantee_point: inletCase.inlet_conditions[0]?.guarantee_point,
+                  suppress: inletCase.inlet_conditions[0]?.suppress
                 }
               ],
               gas_composition: matchingGasCase?.gas_compositions?.map((gas: any) => ({
@@ -255,7 +269,7 @@ export default function ProjectDetailPage() {
                 gas_id: gas.gas_id,
                 name: getGasName(gas.gas_id),
                 value: gas.amount || 0,
-                unit: "mol %"
+                unit: gas.unit || "mol %"
               })) || []
             };
             

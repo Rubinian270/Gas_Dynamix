@@ -25,18 +25,32 @@ enum TemperatureUnit {
   KELVIN = "K"
 }
 
+enum FlowType {
+  MASS_FLOW = "Mass flow",
+  STANDARD_VOLUMETRIC_FLOW = "Standard volumetric flow",
+  VOLUMETRIC_FLOW = "Volumetric flow"
+}
+
 enum FlowUnit {
   KG_S = "kg/s",
-  
   M3_s = "m³/s",
   SLPM = "SLPM"
+}
+
+enum GasUnit {
+  MOL_PERCENT = "mol %",
+  WEIGHT_PERCENT = "weight %",
+  MOL_FRACTION = "mol fraction",
+  WEIGHT_FRACTION = "weight fraction"
 }
 
 type InletCondition = {
   name: string;
   value: number | string;
   unit: string;
-  id?: number; // Added for backend reference
+  id?: number;
+  guarantee_point?: boolean;
+  suppress?: boolean;
 };
 
 type GasComposition = {
@@ -82,7 +96,7 @@ export function CaseDetails({
   gasComposition: initialGasComposition,
   calculatedProperties,
   onCalculate,
-  guaranteePoint: initialGuaranteePoint = false, // Add default values
+  guaranteePoint: initialGuaranteePoint = false,
   suppress: initialSuppress = false
 }: CaseDetailsProps) {
   const [isSelectGasOpen, setIsSelectGasOpen] = useState(false);
@@ -102,10 +116,23 @@ export function CaseDetails({
   const [isCalculating, setIsCalculating] = useState(false);
   const [calculationSuccess, setCalculationSuccess] = useState(false);
   const [editedInletUnits, setEditedInletUnits] = useState<Record<number, string>>({});
-  const [guaranteePoint, setGuaranteePoint] = useState(initialGuaranteePoint);
-  const [suppress, setSuppress] = useState(initialSuppress);
-  const [editedGuaranteePoint, setEditedGuaranteePoint] = useState(initialGuaranteePoint);
-  const [editedSuppress, setEditedSuppress] = useState(initialSuppress);
+  const [guaranteePoint, setGuaranteePoint] = useState(initialInletConditions[0]?.guarantee_point || false);
+  const [suppress, setSuppress] = useState(initialInletConditions[0]?.suppress || false);
+  const [editedGuaranteePoint, setEditedGuaranteePoint] = useState(initialInletConditions[0]?.guarantee_point || false);
+  const [editedSuppress, setEditedSuppress] = useState(initialInletConditions[0]?.suppress || false);
+  const [editedFlowType, setEditedFlowType] = useState<string>(FlowType.MASS_FLOW);
+
+  // Initialize flow type state with a default value
+  const [currentFlowType, setCurrentFlowType] = useState<string>(FlowType.MASS_FLOW);
+
+  // Add useEffect to initialize flow type from inlet conditions if available
+  useEffect(() => {
+    const flowTypeFromInlet = initialInletConditions.find(condition => condition.name === "Flow type");
+    if (flowTypeFromInlet) {
+      setCurrentFlowType(flowTypeFromInlet.value as string);
+      setEditedFlowType(flowTypeFromInlet.value as string);
+    }
+  }, [initialInletConditions]);
 
   const selectedGases = gasComposition.map((gas, index) => ({
     id: gas.id || index + 1,
@@ -267,13 +294,11 @@ export function CaseDetails({
         throw new Error('Authentication required');
       }
 
-      // Get the inlet condition ID from the first condition
       const inletConditionId = inletConditions[0].id;
       if (!inletConditionId) {
         throw new Error('No inlet condition ID found');
       }
 
-      // Structure the payload exactly as the backend expects
       const payload = {
         description: editedInletValues[0] !== undefined ? String(editedInletValues[0]) : String(inletConditions[0].value),
         ambient_pressure: Number(editedInletValues[1] !== undefined ? editedInletValues[1] : inletConditions[1].value),
@@ -286,7 +311,7 @@ export function CaseDetails({
         pressure_unit: editedInletUnits[3] !== undefined ? editedInletUnits[3] : inletConditions[3].unit,
         temperature: Number(editedInletValues[4] !== undefined ? editedInletValues[4] : inletConditions[4].value),
         temperature_unit: editedInletUnits[4] !== undefined ? editedInletUnits[4] : inletConditions[4].unit,
-        flow_type: "Mass flow",
+        flow_type: editedFlowType,
         flow_value: Number(editedInletValues[5] !== undefined ? editedInletValues[5] : inletConditions[5].value),
         flow_unit: editedInletUnits[5] !== undefined ? editedInletUnits[5] : inletConditions[5].unit
       };
@@ -343,6 +368,9 @@ export function CaseDetails({
       if (onCalculate) {
         onCalculate();
       }
+
+      // After successful save, update the current flow type
+      setCurrentFlowType(editedFlowType);
     } catch (error) {
       console.error('Error saving inlet conditions:', error);
       toast({
@@ -355,7 +383,7 @@ export function CaseDetails({
     }
   };
 
-  // Save all gas compositions
+  // Update the saveAllGasCompositions function
   const saveAllGasCompositions = async () => {
     try {
       setIsSaving(true);
@@ -364,50 +392,56 @@ export function CaseDetails({
       if (!token) {
         throw new Error('Authentication required');
       }
-      
-      // Create an array of promises for each update
-      const updatePromises = Object.entries(editedGasValues).map(async ([indexStr, value]) => {
-        const index = parseInt(indexStr);
-        const gas = gasComposition[index];
-        const gasId = gas.id || index + 1;
-        
-        const payload = {
-          amount: value,
-          unit: gas.unit
-        };
-        
-        const response = await fetch(
-          `https://gaxmixer-production.up.railway.app/projects/${projectId}/cases/${caseId}/gases/${gasId}/update/`, 
-          {
-            method: 'PUT',
-            headers: {
-              'Authorization': `Bearer ${token}`,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(payload)
-          }
-        );
-        
-        if (!response.ok) {
-          throw new Error(`Failed to update gas composition for ${gas.name}`);
+
+      // Create payload in the new format
+      const payload = gasComposition.map((gas, index) => ({
+        gas_id: gas.id || 0,
+        amount: editedGasValues[index] !== undefined ? editedGasValues[index] : gas.value,
+        unit: editedGasUnits[index] || gas.unit
+      }));
+
+      console.log('Sending payload:', payload);
+
+      const response = await fetch(
+        `https://gaxmixer-production.up.railway.app/projects/${projectId}/cases/${caseId}/gases/update_new/`, 
+        {
+          method: 'PUT',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(payload)
         }
-        
-        return { index, value };
-      });
+      );
       
-      // Wait for all updates to complete
-      const results = await Promise.all(updatePromises);
+      if (!response.ok) {
+        throw new Error('Failed to update gas compositions');
+      }
+
+      // Get the updated data from response
+      const updatedData = await response.json();
+      console.log('Response data:', updatedData);
       
-      // Update local state with all the new values
-      const updatedGasComposition = [...gasComposition];
-      results.forEach(({ index, value }) => {
-        updatedGasComposition[index] = {
-          ...updatedGasComposition[index],
-          value
-        };
+      // Ensure updatedData is an array
+      const updatedGases = Array.isArray(updatedData) ? updatedData : [];
+      
+      // Update local state with the response data
+      const updatedGasComposition = gasComposition.map(gas => {
+        const updatedGas = updatedGases.find(updated => updated.gas_id === gas.id);
+        if (updatedGas) {
+          return {
+            ...gas,
+            value: updatedGas.amount,
+            unit: updatedGas.unit
+          };
+        }
+        return gas;
       });
       
       setGasComposition(updatedGasComposition);
+      setEditingGasSection(false);
+      setEditedGasValues({});
+      setEditedGasUnits({});
       
       toast({
         title: "Success",
@@ -415,12 +449,14 @@ export function CaseDetails({
         variant: "default",
       });
       
-      setEditingGasSection(false);
+      if (onCalculate) {
+        onCalculate();
+      }
     } catch (error) {
       console.error('Error updating gas compositions:', error);
       toast({
         title: "Error",
-        description: error instanceof Error ? error.message : "Failed to update gas compositions",
+        description: "Failed to update gas compositions",
         variant: "destructive",
       });
     } finally {
@@ -428,7 +464,18 @@ export function CaseDetails({
     }
   };
 
-  // Save individual gas composition
+  // Update the total row to show the appropriate unit
+  const getTotalUnit = () => {
+    // Get the most common unit from the gas compositions
+    const unitCounts = gasComposition.reduce((acc: Record<string, number>, gas) => {
+      acc[gas.unit] = (acc[gas.unit] || 0) + 1;
+      return acc;
+    }, {});
+
+    return Object.entries(unitCounts).reduce((a, b) => a[1] > b[1] ? a : b)[0] || "mol %";
+  };
+
+  // Update the saveGasComposition function for individual updates
   const saveGasComposition = async (index: number) => {
     try {
       setIsSaving(true);
@@ -439,56 +486,57 @@ export function CaseDetails({
       }
 
       const gas = gasComposition[index];
-      if (!gas.gas_id) {
+      if (!gas.id) {
         throw new Error('Gas ID is required');
       }
       
-      // Create payload with proper structure
-      const payload = {
+      // Create payload in the new format
+      const payload = [{
+        gas_id: gas.id,
         amount: Number(editValue),
-        unit: gas.unit,
-        name: gas.name // Include the gas name in the payload
-      };
+        unit: editedGasUnits[index] || gas.unit
+      }];
 
-      console.log('Saving gas composition:', {
-        projectId,
-        caseId,
-        gasId: gas.gas_id,
-        payload
-      });
-      
+      console.log('Sending payload:', payload);
+
       const response = await fetch(
-        `https://gaxmixer-production.up.railway.app/projects/${projectId}/cases/${caseId}/gases/${gas.gas_id}/update/`, 
+        `https://gaxmixer-production.up.railway.app/projects/${projectId}/cases/${caseId}/gases/update_new/`, 
         {
           method: 'PUT',
           headers: {
             'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
+            'Content-Type': 'application/json'
           },
           body: JSON.stringify(payload)
         }
       );
       
       if (!response.ok) {
-        const errorData = await response.json().catch(() => null);
-        console.error('Error response:', {
-          status: response.status,
-          statusText: response.statusText,
-          errorData
-        });
-        throw new Error(`Failed to update gas composition for ${gas.name}: ${response.status} ${response.statusText}`);
+        throw new Error('Failed to update gas composition');
       }
 
-      // Update local state
-      const updatedGasComposition = [...gasComposition];
-      updatedGasComposition[index] = {
-        ...updatedGasComposition[index],
-        value: Number(editValue)
-      };
+      // Get the updated data from response
+      const updatedData = await response.json();
+      console.log('Response data:', updatedData);
       
-      setGasComposition(updatedGasComposition);
+      // Ensure updatedData is an array and get the first item
+      const updatedGases = Array.isArray(updatedData) ? updatedData : [];
+      const updatedGas = updatedGases[0];
+
+      if (updatedGas) {
+        // Update local state
+        const updatedGasComposition = [...gasComposition];
+        updatedGasComposition[index] = {
+          ...updatedGasComposition[index],
+          value: updatedGas.amount,
+          unit: updatedGas.unit
+        };
+        
+        setGasComposition(updatedGasComposition);
+      }
+      
       setEditingGas(null);
+      setEditedGasUnits({});
       
       toast({
         title: "Success",
@@ -496,7 +544,6 @@ export function CaseDetails({
         variant: "default",
       });
       
-      // Refresh data from server
       if (onCalculate) {
         onCalculate();
       }
@@ -504,7 +551,7 @@ export function CaseDetails({
       console.error('Error updating gas composition:', error);
       toast({
         title: "Error",
-        description: error instanceof Error ? error.message : "Failed to update gas composition",
+        description: "Failed to update gas composition",
         variant: "destructive",
       });
     } finally {
@@ -762,6 +809,17 @@ export function CaseDetails({
     }
   };
 
+  // Add these new state variables and handlers near the other state declarations
+  const [editedGasUnits, setEditedGasUnits] = useState<Record<number, string>>({});
+
+  // Add this new handler function with the other handlers
+  const handleGasUnitChange = (index: number, unit: string) => {
+    setEditedGasUnits({
+      ...editedGasUnits,
+      [index]: unit
+    });
+  };
+
   return (
     <Card className="border-blue-100 shadow-md">
       <CardHeader className="bg-gradient-to-r from-blue-50 to-white border-b border-blue-100 py-2">
@@ -862,7 +920,23 @@ export function CaseDetails({
                   {inletConditions.map((condition, index) => (
                     <TableRow key={index} className="h-6 hover:bg-blue-50/30">
                       <TableCell className="py-0.5 text-xs text-blue-800">
-                        {condition.name}
+                        {condition.name.toLowerCase().includes('flow') ? (
+                          editingInletSection ? (
+                            <select
+                              value={editedFlowType}
+                              onChange={(e) => setEditedFlowType(e.target.value)}
+                              className="w-full bg-white border border-blue-200 p-0.5 text-xs focus:ring-1 focus:ring-blue-300 rounded"
+                            >
+                              {Object.values(FlowType).map(type => (
+                                <option key={type} value={type}>{type}</option>
+                              ))}
+                            </select>
+                          ) : (
+                            currentFlowType
+                          )
+                        ) : (
+                          condition.name
+                        )}
                       </TableCell>
                       <TableCell className="py-0.5 text-xs text-blue-600">
                         {editingInletSection ? (
@@ -1022,13 +1096,14 @@ export function CaseDetails({
                   <TableRow className="h-6">
                     <TableHead className="w-8 py-1 text-xs font-medium">#</TableHead>
                     <TableHead className="py-1 text-xs font-medium">Component</TableHead>
-                    <TableHead className="w-24 py-1 text-xs font-medium text-right">mol %</TableHead>
+                    <TableHead className="w-24 py-1 text-xs font-medium text-right">Value</TableHead>
+                    <TableHead className="w-24 py-1 text-xs font-medium text-right">Unit</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {gasComposition.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={3} className="py-4 text-center text-sm text-blue-600">
+                      <TableCell colSpan={4} className="py-4 text-center text-sm text-blue-600">
                         No gas components selected. Please click "Select gas components" to add gases.
                       </TableCell>
                     </TableRow>
@@ -1084,6 +1159,21 @@ export function CaseDetails({
                               />
                             )}
                           </TableCell>
+                          <TableCell className="py-0.5 text-xs text-right">
+                            {editingGasSection ? (
+                              <select
+                                value={editedGasUnits[index] || gas.unit}
+                                onChange={(e) => handleGasUnitChange(index, e.target.value)}
+                                className="w-full bg-white border border-blue-200 p-0.5 text-xs focus:ring-1 focus:ring-blue-300 rounded text-right"
+                              >
+                                {Object.values(GasUnit).map(unit => (
+                                  <option key={unit} value={unit}>{unit}</option>
+                                ))}
+                              </select>
+                            ) : (
+                              gas.unit
+                            )}
+                          </TableCell>
                         </TableRow>
                       ))}
                       <TableRow className="h-6 border-t border-blue-200">
@@ -1097,11 +1187,33 @@ export function CaseDetails({
                             : totalComposition.toFixed(3)
                           }
                         </TableCell>
+                        <TableCell className="py-0.5 text-xs font-medium text-right">
+                          {getTotalUnit()}
+                        </TableCell>
                       </TableRow>
                     </>
                   )}
                 </TableBody>
               </Table>
+
+              <div className="mt-4">
+                <Table>
+                  <TableHeader className="bg-blue-50/50">
+                    <TableRow className="h-6">
+                      <TableHead className="py-1 text-xs font-medium">Unit</TableHead>
+                      <TableHead className="py-1 text-xs font-medium">Description</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {Object.entries(GasUnit).map(([key, value]) => (
+                      <TableRow key={key} className="h-6">
+                        <TableCell className="py-0.5 text-xs">{value}</TableCell>
+                        <TableCell className="py-0.5 text-xs">{key.toLowerCase().replace(/_/g, ' ')}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
 
               <div className="flex items-center gap-3 pt-1">
                 <div className="flex items-center gap-1">
