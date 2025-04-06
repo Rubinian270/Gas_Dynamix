@@ -423,7 +423,35 @@ export default function ProjectDetailPage() {
 
             <Card className="bg-gradient-to-br from-blue-50 to-white shadow-md border-blue-100">
               <CardHeader className="pb-3">
-                <CardTitle className="text-lg font-medium text-blue-800">Quick Actions</CardTitle>
+                <div className="flex justify-between items-center">
+                  <CardTitle className="text-lg font-medium text-blue-800">Quick Actions</CardTitle>
+                  <div className="flex gap-2">
+                    <Button
+                      className="bg-blue-600 hover:bg-blue-700 text-white text-xs h-8"
+                      onClick={() => {
+                        // PDF export logic will be implemented
+                        toast({
+                          title: "Coming Soon",
+                          description: "PDF export functionality will be available soon!",
+                        });
+                      }}
+                    >
+                      Export as PDF
+                    </Button>
+                    <Button
+                      className="bg-blue-600 hover:bg-blue-700 text-white text-xs h-8"
+                      onClick={() => {
+                        // Excel export logic will be implemented
+                        toast({
+                          title: "Coming Soon",
+                          description: "Excel export functionality will be available soon!",
+                        });
+                      }}
+                    >
+                      Export as Excel
+                    </Button>
+                  </div>
+                </div>
               </CardHeader>
               <CardContent className="space-y-2 pt-0">
                 <div className="grid grid-cols-2 gap-2">
@@ -467,7 +495,7 @@ export default function ProjectDetailPage() {
                     }}
                   >
                     <FileSpreadsheet className="mr-2 h-4 w-4" />
-                    Add Case
+                    Add a new operating case
                   </Button>
                   <Button 
                     variant="outline" 

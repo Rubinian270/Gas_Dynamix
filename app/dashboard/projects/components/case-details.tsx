@@ -600,11 +600,26 @@ export function CaseDetails({
       if (!token) {
         throw new Error('Authentication required');
       }
+
+      console.log('Calculating results for:', {
+        projectId,
+        caseId,
+        endpoint: `https://gaxmixer-production.up.railway.app/projects/${projectId}/calculated_properties`
+      });
       
+      // First, ensure we have valid inlet conditions and gas compositions
+      if (inletConditions.length === 0) {
+        throw new Error('No inlet conditions available');
+      }
+
+      if (gasComposition.length === 0) {
+        throw new Error('No gas composition available');
+      }
+
       const response = await fetch(
-        `https://gaxmixer-production.up.railway.app/projects/${projectId}/cases/${caseId}/calculate/`, 
+        `https://gaxmixer-production.up.railway.app/projects/${projectId}/calculated_properties`, 
         {
-          method: 'PUT',
+          method: 'GET',  // Changed from POST to GET
           headers: {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json'
@@ -612,9 +627,26 @@ export function CaseDetails({
         }
       );
       
+      const responseText = await response.text();
+      console.log('Raw response:', responseText);
+
       if (!response.ok) {
-        throw new Error('Failed to calculate results');
+        console.error('Calculate response error:', {
+          status: response.status,
+          statusText: response.statusText,
+          response: responseText
+        });
+        throw new Error(`Failed to calculate results: ${response.status} ${response.statusText}`);
       }
+
+      let result;
+      try {
+        result = responseText ? JSON.parse(responseText) : null;
+      } catch (e) {
+        console.warn('Could not parse response as JSON:', e);
+      }
+      
+      console.log('Calculate response success:', result);
       
       toast({
         title: "Calculation successful",
