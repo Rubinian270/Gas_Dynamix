@@ -106,7 +106,7 @@ export function CaseDetails({
   const [editingGas, setEditingGas] = useState<number | null>(null);
   const [editValue, setEditValue] = useState<string | number>("");
   const [isSaving, setIsSaving] = useState(false);
-  const [activeTab, setActiveTab] = useState("inlet");
+  const [activeTab, setActiveTab] = useState("gas");
   
   // New state for section editing
   const [editingInletSection, setEditingInletSection] = useState(false);
@@ -141,8 +141,55 @@ export function CaseDetails({
 
   const totalComposition = gasComposition.reduce((sum, gas) => sum + gas.value, 0);
 
-  const handleGasSelection = (gases: { id: number; name: string }[]) => {
-    // Handle gas selection (no-op for demo)
+  const handleGasSelection = async (gases: { id: number; name: string }[]) => {
+    try {
+      const token = localStorage.getItem('access_token');
+      if (!token) {
+        throw new Error('Authentication required');
+      }
+
+      // Create payload for selected gases
+      const payload = gases.map(gas => ({
+        gas_id: gas.id,
+        amount: 0,
+        unit: GasUnit.MOL_PERCENT
+      }));
+
+      const response = await fetch(
+        `https://gaxmixer-production.up.railway.app/projects/${projectId}/cases/${caseId}/gases/update_new/`,
+        {
+          method: 'PUT',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(payload)
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to update gas selection');
+      }
+
+      toast({
+        title: "Success",
+        description: "Gas components updated successfully",
+        variant: "default",
+      });
+
+      // Close the modal
+      setIsSelectGasOpen(false);
+
+      // Refresh the page after successful save
+      window.location.reload();
+    } catch (error) {
+      console.error('Error updating gas selection:', error);
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to update gas selection",
+        variant: "destructive",
+      });
+    }
   };
 
   // Individual field editing functions
@@ -393,7 +440,6 @@ export function CaseDetails({
         throw new Error('Authentication required');
       }
 
-      // Create payload in the new format
       const payload = gasComposition.map((gas, index) => ({
         gas_id: gas.id || 0,
         amount: editedGasValues[index] !== undefined ? editedGasValues[index] : gas.value,
@@ -452,6 +498,9 @@ export function CaseDetails({
       if (onCalculate) {
         onCalculate();
       }
+
+      // Refresh the page after successful save
+      window.location.reload();
     } catch (error) {
       console.error('Error updating gas compositions:', error);
       toast({
@@ -892,13 +941,13 @@ export function CaseDetails({
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <Tabs defaultValue="inlet" className="w-full" value={activeTab} onValueChange={setActiveTab}>
+        <Tabs defaultValue="gas" className="w-full" value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="mb-4 bg-blue-50/50 p-1 border border-blue-100 rounded-md">
-            <TabsTrigger value="inlet" className="text-xs data-[state=active]:bg-white data-[state=active]:text-blue-700">
-              Project Properties
-            </TabsTrigger>
             <TabsTrigger value="gas" className="text-xs data-[state=active]:bg-white data-[state=active]:text-blue-700">
               Gas Composition
+            </TabsTrigger>
+            <TabsTrigger value="inlet" className="text-xs data-[state=active]:bg-white data-[state=active]:text-blue-700">
+              Project Properties
             </TabsTrigger>
             {calculatedProperties && (
               <TabsTrigger value="calculated" className="text-xs data-[state=active]:bg-white data-[state=active]:text-blue-700">
