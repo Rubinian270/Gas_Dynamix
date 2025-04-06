@@ -157,14 +157,66 @@ export default function ProjectDetailPage() {
           }
         });
         
-        if (inletConditionsResponse.ok) {
+        if (!inletConditionsResponse.ok) {
+          console.error('Failed to fetch inlet conditions:', inletConditionsResponse.status);
+          // Create a default structure if inlet conditions fetch fails
+          inletConditionsData = {
+            projects: [{
+              cases: [{
+                case_id: 1,
+                case_number: 1,
+                name: "Case 1",
+                inlet_conditions: [{
+                  inlet_condition_id: 1,
+                  ambient_pressure: 0,
+                  ambient_pressure_unit: "mbara",
+                  ambient_temperature: 0,
+                  ambient_temperature_unit: "°C",
+                  pressure: 0,
+                  pressure_unit: "Pa",
+                  temperature: 0,
+                  temperature_unit: "K",
+                  flow_value: 0,
+                  flow_unit: "kg/s",
+                  flow_type: "Mass flow",
+                  guarantee_point: false,
+                  suppress: false
+                }]
+              }]
+            }]
+          };
+        } else {
           inletConditionsData = await inletConditionsResponse.json();
           console.log('Inlet conditions:', inletConditionsData);
-        } else {
-          console.error('Failed to fetch inlet conditions:', inletConditionsResponse.status);
         }
       } catch (err) {
         console.error('Error fetching inlet conditions:', err);
+        // Create a default structure if inlet conditions fetch fails
+        inletConditionsData = {
+          projects: [{
+            cases: [{
+              case_id: 1,
+              case_number: 1,
+              name: "Case 1",
+              inlet_conditions: [{
+                inlet_condition_id: 1,
+                ambient_pressure: 0,
+                ambient_pressure_unit: "mbara",
+                ambient_temperature: 0,
+                ambient_temperature_unit: "°C",
+                pressure: 0,
+                pressure_unit: "Pa",
+                temperature: 0,
+                temperature_unit: "K",
+                flow_value: 0,
+                flow_unit: "kg/s",
+                flow_type: "Mass flow",
+                guarantee_point: false,
+                suppress: false
+              }]
+            }]
+          }]
+        };
       }
       
       // Fetch calculated properties with error handling
@@ -189,31 +241,14 @@ export default function ProjectDetailPage() {
       // Process and combine the data
       const cases: Case[] = [];
       
-      // Check if we have valid data structures
+      // Check if we have valid data structures and process cases
       if (inletConditionsData?.projects?.[0]?.cases) {
         const inletCases = inletConditionsData.projects[0].cases;
         const calculatedCases = calculatedPropertiesData?.projects?.[0]?.cases || [];
         const gasCases = gasCompositionsData?.projects?.[0]?.cases || [];
         
-        console.log('Processing cases from backend:', {
-          inletCases,
-          calculatedCases,
-          gasCases
-        });
-
-        // Sort inlet cases by case_number to ensure proper order
-        const sortedInletCases = [...inletCases].sort((a, b) => 
-          (a.case_number || 0) - (b.case_number || 0)
-        );
-        
         // Map through inlet conditions cases and find matching gas composition cases
-        sortedInletCases.forEach((inletCase: any) => {
-          console.log('Processing inlet case:', {
-            case_id: inletCase.case_id,
-            case_number: inletCase.case_number,
-            inlet_conditions: inletCase.inlet_conditions
-          });
-
+        inletCases.forEach((inletCase: any) => {
           const matchingGasCase = gasCases.find(
             (gasCase: any) => gasCase.case_id === inletCase.case_id
           );
@@ -222,136 +257,120 @@ export default function ProjectDetailPage() {
             calcCase.case_id === inletCase.case_id
           );
           
-          // Create default inlet condition if none exists
-          const inletCondition = inletCase.inlet_conditions?.[0] || {
-            inlet_condition_id: null,
-            ambient_pressure: 0,
-            ambient_pressure_unit: "mbara",
-            ambient_temperature: 0,
-            ambient_temperature_unit: "°C",
-            pressure: 0,
-            pressure_unit: "Pa",
-            temperature: 0,
-            temperature_unit: "K",
-            flow_value: 0,
-            flow_unit: "kg/s",
-            guarantee_point: false,
-            suppress: false
-          };
-          
-          // Transform the data to match our Case type
-          const caseItem: Case = {
-            case_id: inletCase.case_id,
-            name: `Case ${inletCase.case_number || cases.length + 1}`,
-            is_default: inletCase.case_number === 1,
-            inlet_condition_id: inletCondition.inlet_condition_id,
-            inlet_conditions: [
-              { 
-                name: "Description", 
-                value: inletCase.name || `Case ${inletCase.case_number || cases.length + 1}`, 
-                unit: "",
-                id: inletCondition.inlet_condition_id,
-                guarantee_point: inletCondition.guarantee_point,
-                suppress: inletCondition.suppress
-              },
-              { 
-                name: "ambient_pressure", 
-                value: inletCondition.ambient_pressure || 0, 
-                unit: inletCondition.ambient_pressure_unit || "mbara",
-                id: inletCondition.inlet_condition_id,
-                guarantee_point: inletCondition.guarantee_point,
-                suppress: inletCondition.suppress
-              },
-              { 
-                name: "ambient_temperature", 
-                value: inletCondition.ambient_temperature || 0, 
-                unit: inletCondition.ambient_temperature_unit || "°C",
-                id: inletCondition.inlet_condition_id,
-                guarantee_point: inletCondition.guarantee_point,
-                suppress: inletCondition.suppress
-              },
-              { 
-                name: "pressure", 
-                value: inletCondition.pressure || 0, 
-                unit: inletCondition.pressure_unit || "Pa",
-                id: inletCondition.inlet_condition_id,
-                guarantee_point: inletCondition.guarantee_point,
-                suppress: inletCondition.suppress
-              },
-              { 
-                name: "temperature", 
-                value: inletCondition.temperature || 0, 
-                unit: inletCondition.temperature_unit || "K",
-                id: inletCondition.inlet_condition_id,
-                guarantee_point: inletCondition.guarantee_point,
-                suppress: inletCondition.suppress
-              },
-              { 
-                name: "mass_flow", 
-                value: inletCondition.flow_value || 0, 
-                unit: inletCondition.flow_unit || "kg/s",
-                id: inletCondition.inlet_condition_id,
-                guarantee_point: inletCondition.guarantee_point,
-                suppress: inletCondition.suppress
+          if (inletCase.inlet_conditions && inletCase.inlet_conditions.length > 0) {
+            const inletCondition = inletCase.inlet_conditions[0];
+            
+            // Transform the data to match our Case type
+            const caseItem: Case = {
+              case_id: inletCase.case_id,
+              name: `Case ${inletCase.case_number}`,
+              is_default: inletCase.case_number === 1,
+              inlet_condition_id: inletCase.inlet_conditions[0]?.inlet_condition_id,
+              inlet_conditions: [
+                { 
+                  name: "Description", 
+                  value: inletCase.name || "Enter value", 
+                  unit: "",
+                  id: inletCase.inlet_conditions[0]?.inlet_condition_id,
+                  guarantee_point: inletCase.inlet_conditions[0]?.guarantee_point,
+                  suppress: inletCase.inlet_conditions[0]?.suppress
+                },
+                { 
+                  name: "Ambient pressure", 
+                  value: inletCondition.ambient_pressure || 0, 
+                  unit: inletCondition.ambient_pressure_unit || "mbara",
+                  id: inletCase.inlet_conditions[0]?.inlet_condition_id,
+                  guarantee_point: inletCase.inlet_conditions[0]?.guarantee_point,
+                  suppress: inletCase.inlet_conditions[0]?.suppress
+                },
+                { 
+                  name: "Ambient temperature", 
+                  value: inletCondition.ambient_temperature || 0, 
+                  unit: inletCondition.ambient_temperature_unit || "°C",
+                  id: inletCase.inlet_conditions[0]?.inlet_condition_id,
+                  guarantee_point: inletCase.inlet_conditions[0]?.guarantee_point,
+                  suppress: inletCase.inlet_conditions[0]?.suppress
+                },
+                { 
+                  name: "Pressure", 
+                  value: inletCondition.pressure || 0, 
+                  unit: inletCondition.pressure_unit || "Pa",
+                  id: inletCase.inlet_conditions[0]?.inlet_condition_id,
+                  guarantee_point: inletCase.inlet_conditions[0]?.guarantee_point,
+                  suppress: inletCase.inlet_conditions[0]?.suppress
+                },
+                { 
+                  name: "Temperature", 
+                  value: inletCondition.temperature || 0, 
+                  unit: inletCondition.temperature_unit || "K",
+                  id: inletCase.inlet_conditions[0]?.inlet_condition_id,
+                  guarantee_point: inletCase.inlet_conditions[0]?.guarantee_point,
+                  suppress: inletCase.inlet_conditions[0]?.suppress
+                },
+                { 
+                  name: "Flow", 
+                  value: inletCondition.flow_value || 0, 
+                  unit: inletCondition.flow_unit || "kg/s",
+                  id: inletCase.inlet_conditions[0]?.inlet_condition_id,
+                  guarantee_point: inletCase.inlet_conditions[0]?.guarantee_point,
+                  suppress: inletCase.inlet_conditions[0]?.suppress
+                }
+              ],
+              gas_composition: matchingGasCase?.gas_compositions?.map((gas: any) => ({
+                id: gas.gas_id,
+                gas_id: gas.gas_id,
+                name: getGasName(gas.gas_id),
+                value: gas.amount || 0,
+                unit: gas.unit || "mol %"
+              })) || []
+            };
+            
+            // Add calculated properties if available
+            if (matchingCalculatedCase && matchingCalculatedCase.calculated_properties) {
+              if (matchingCalculatedCase.calculated_properties.length > 0) {
+                const calcProps = matchingCalculatedCase.calculated_properties[matchingCalculatedCase.calculated_properties.length - 1];
+                caseItem.calculated_properties = {
+                  molar_mass: calcProps.molar_mass,
+                  volumetric_flow: calcProps.volumetric_flow,
+                  standard_volumetric_flow: calcProps.standard_volumetric_flow,
+                  vapor_mole_fraction: calcProps.vapor_mole_fraction,
+                  relative_humidity: calcProps.relative_humidity,
+                  specific_heat_cp: calcProps.specific_heat_cp,
+                  specific_heat_cv: calcProps.specific_heat_cv,
+                  specific_heat_ratio: calcProps.specific_heat_ratio,
+                  specific_gas_constant: calcProps.specific_gas_constant,
+                  specific_gravity: calcProps.specific_gravity,
+                  density: calcProps.density,
+                  compressibility_factor: calcProps.compressibility_factor,
+                  speed_of_sound: calcProps.speed_of_sound,
+                  dew_point: calcProps.dew_point
+                };
               }
-            ],
-            gas_composition: matchingGasCase?.gas_compositions?.map((gas: any) => ({
-              id: gas.gas_id,
-              gas_id: gas.gas_id,
-              name: getGasName(gas.gas_id),
-              value: gas.amount || 0,
-              unit: gas.unit || "mol %"
-            })) || []
-          };
-          
-          // Add calculated properties if available
-          if (matchingCalculatedCase && matchingCalculatedCase.calculated_properties) {
-            // Check if the calculated_properties array is not empty
-            if (matchingCalculatedCase.calculated_properties.length > 0) {
-              // Get the last calculated property (most recent)
-              const calcProps = matchingCalculatedCase.calculated_properties[matchingCalculatedCase.calculated_properties.length - 1];
-              caseItem.calculated_properties = {
-                molar_mass: calcProps.molar_mass,
-                volumetric_flow: calcProps.volumetric_flow,
-                standard_volumetric_flow: calcProps.standard_volumetric_flow,
-                vapor_mole_fraction: calcProps.vapor_mole_fraction,
-                relative_humidity: calcProps.relative_humidity,
-                specific_heat_cp: calcProps.specific_heat_cp,
-                specific_heat_cv: calcProps.specific_heat_cv,
-                specific_heat_ratio: calcProps.specific_heat_ratio,
-                specific_gas_constant: calcProps.specific_gas_constant,
-                specific_gravity: calcProps.specific_gravity,
-                density: calcProps.density,
-                compressibility_factor: calcProps.compressibility_factor,
-                speed_of_sound: calcProps.speed_of_sound,
-                dew_point: calcProps.dew_point
-              };
             }
+            
+            cases.push(caseItem);
           }
-          
-          console.log('Created case item:', {
-            case_id: caseItem.case_id,
-            name: caseItem.name,
-            is_default: caseItem.is_default
-          });
-          
-          cases.push(caseItem);
         });
-
-        console.log('Final processed cases:', cases.map(c => ({
-          case_id: c.case_id,
-          name: c.name,
-          is_default: c.is_default
-        })));
       }
-      
-      // If no cases were found, show a message instead of creating a default case
+
+      // If no cases were found, create a default case
       if (cases.length === 0) {
-        toast({
-          title: "No cases found",
-          description: "Click 'Add a new operating case' to create your first case.",
-          variant: "default",
-        });
+        const defaultCase: Case = {
+          case_id: 1,
+          name: "Case 1",
+          is_default: true,
+          inlet_condition_id: 1,
+          inlet_conditions: [
+            { name: "Description", value: "Enter value", unit: "", id: 1 },
+            { name: "Ambient pressure", value: 0, unit: "mbara", id: 1 },
+            { name: "Ambient temperature", value: 0, unit: "°C", id: 1 },
+            { name: "Pressure", value: 0, unit: "Pa", id: 1 },
+            { name: "Temperature", value: 0, unit: "K", id: 1 },
+            { name: "Flow", value: 0, unit: "kg/s", id: 1 }
+          ],
+          gas_composition: []
+        };
+        cases.push(defaultCase);
       }
 
       // Transform the data to match our ProjectDetails type
@@ -360,7 +379,7 @@ export default function ProjectDetailPage() {
         name: selectedProject.name,
         description: selectedProject.description,
         created_at: selectedProject.created_at,
-        cases: cases // Use only the cases from the backend
+        cases: cases
       };
 
       setProject(transformedProject);

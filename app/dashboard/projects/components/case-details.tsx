@@ -604,7 +604,7 @@ export function CaseDetails({
       console.log('Calculating results for:', {
         projectId,
         caseId,
-        endpoint: `https://gaxmixer-production.up.railway.app/projects/${projectId}/calculated_properties`
+        endpoint: `https://gaxmixer-production.up.railway.app/projects/${projectId}/cases/${caseId}/calculate/`
       });
       
       // First, ensure we have valid inlet conditions and gas compositions
@@ -617,13 +617,17 @@ export function CaseDetails({
       }
 
       const response = await fetch(
-        `https://gaxmixer-production.up.railway.app/projects/${projectId}/calculated_properties`, 
+        `https://gaxmixer-production.up.railway.app/projects/${projectId}/cases/${caseId}/calculate/`, 
         {
-          method: 'GET',  // Changed from POST to GET
+          method: 'PUT',  // Changed from POST to PUT
           headers: {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json'
-          }
+          },
+          body: JSON.stringify({
+            project_id: projectId,
+            case_id: caseId
+          })
         }
       );
       
@@ -952,23 +956,35 @@ export function CaseDetails({
                   {inletConditions.map((condition, index) => (
                     <TableRow key={index} className="h-6 hover:bg-blue-50/30">
                       <TableCell className="py-0.5 text-xs text-blue-800">
-                        {condition.name.toLowerCase().includes('flow') ? (
-                          editingInletSection ? (
-                            <select
-                              value={editedFlowType}
-                              onChange={(e) => setEditedFlowType(e.target.value)}
-                              className="w-full bg-white border border-blue-200 p-0.5 text-xs focus:ring-1 focus:ring-blue-300 rounded"
-                            >
-                              {Object.values(FlowType).map(type => (
-                                <option key={type} value={type}>{type}</option>
-                              ))}
-                            </select>
-                          ) : (
-                            currentFlowType
-                          )
-                        ) : (
-                          condition.name
-                        )}
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono w-6 border-r border-blue-200 pr-2">
+                            {index === 0 ? "D" : 
+                             index === 1 ? "pa" :
+                             index === 2 ? "Ta" :
+                             index === 3 ? "p" :
+                             index === 4 ? "T" :
+                             index === 5 ? "ṁ" : ""}
+                          </span>
+                          <span>
+                            {condition.name.toLowerCase().includes('flow') ? (
+                              editingInletSection ? (
+                                <select
+                                  value={editedFlowType}
+                                  onChange={(e) => setEditedFlowType(e.target.value)}
+                                  className="w-full bg-white border border-blue-200 p-0.5 text-xs focus:ring-1 focus:ring-blue-300 rounded"
+                                >
+                                  {Object.values(FlowType).map(type => (
+                                    <option key={type} value={type}>{type}</option>
+                                  ))}
+                                </select>
+                              ) : (
+                                currentFlowType
+                              )
+                            ) : (
+                              condition.name
+                            )}
+                          </span>
+                        </div>
                       </TableCell>
                       <TableCell className="py-0.5 text-xs text-blue-600">
                         {editingInletSection ? (
@@ -1276,74 +1292,144 @@ export function CaseDetails({
                     </thead>
                     <tbody>
                       <tr className="border-b border-blue-50">
-                        <td className="py-2 px-3 text-sm text-blue-700">Molar mass</td>
+                        <td className="py-2 px-3 text-sm text-blue-700">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono w-6 border-r border-blue-200 pr-2">M</span>
+                            <span>Molar mass</span>
+                          </div>
+                        </td>
                         <td className="py-2 px-3 text-sm">{formatCalculatedValue(calculatedProperties?.molar_mass)}</td>
-                        <td className="py-2 px-3 text-sm">kg/mol</td>
+                        <td className="py-2 px-3 text-sm text-blue-500">kg/mol</td>
                       </tr>
                       <tr className="border-b border-blue-50">
-                        <td className="py-2 px-3 text-sm text-blue-700">Volumetric flow</td>
+                        <td className="py-2 px-3 text-sm text-blue-700">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono w-6 border-r border-blue-200 pr-2">V̇</span>
+                            <span>Volumetric flow</span>
+                          </div>
+                        </td>
                         <td className="py-2 px-3 text-sm">{formatCalculatedValue(calculatedProperties?.volumetric_flow)}</td>
-                        <td className="py-2 px-3 text-sm">m³/h</td>
+                        <td className="py-2 px-3 text-sm text-blue-500">m³/h</td>
                       </tr>
                       <tr className="border-b border-blue-50">
-                        <td className="py-2 px-3 text-sm text-blue-700">Standard volumetric flow</td>
+                        <td className="py-2 px-3 text-sm text-blue-700">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono w-6 border-r border-blue-200 pr-2">V̇n</span>
+                            <span>Standard volumetric flow</span>
+                          </div>
+                        </td>
                         <td className="py-2 px-3 text-sm">{formatCalculatedValue(calculatedProperties?.standard_volumetric_flow)}</td>
-                        <td className="py-2 px-3 text-sm">Nm³/h, DIN 1343</td>
+                        <td className="py-2 px-3 text-sm text-blue-500">Nm³/h, DIN 1343</td>
                       </tr>
                       <tr className="border-b border-blue-50">
-                        <td className="py-2 px-3 text-sm text-blue-700">Vapour mole fraction</td>
+                        <td className="py-2 px-3 text-sm text-blue-700">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono w-6 border-r border-blue-200 pr-2">x</span>
+                            <span>Vapour mole fraction</span>
+                          </div>
+                        </td>
                         <td className="py-2 px-3 text-sm">{formatCalculatedValue(calculatedProperties?.vapor_mole_fraction)}</td>
-                        <td className="py-2 px-3 text-sm"></td>
+                        <td className="py-2 px-3 text-sm text-blue-500"></td>
                       </tr>
                       <tr className="border-b border-blue-50">
-                        <td className="py-2 px-3 text-sm text-blue-700">Relative humidity</td>
+                        <td className="py-2 px-3 text-sm text-blue-700">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono w-6 border-r border-blue-200 pr-2">φ</span>
+                            <span>Relative humidity</span>
+                          </div>
+                        </td>
                         <td className="py-2 px-3 text-sm">{formatCalculatedValue(calculatedProperties?.relative_humidity)}</td>
-                        <td className="py-2 px-3 text-sm">%</td>
+                        <td className="py-2 px-3 text-sm text-blue-500">%</td>
                       </tr>
                       <tr className="border-b border-blue-50">
-                        <td className="py-2 px-3 text-sm text-blue-700">Specific heat capacity (Cp)</td>
+                        <td className="py-2 px-3 text-sm text-blue-700">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono w-6 border-r border-blue-200 pr-2">cp</span>
+                            <span>Specific heat capacity (Cp)</span>
+                          </div>
+                        </td>
                         <td className="py-2 px-3 text-sm">{formatCalculatedValue(calculatedProperties?.specific_heat_cp)}</td>
-                        <td className="py-2 px-3 text-sm">J/(kg·K)</td>
+                        <td className="py-2 px-3 text-sm text-blue-500">J/(kg·K)</td>
                       </tr>
                       <tr className="border-b border-blue-50">
-                        <td className="py-2 px-3 text-sm text-blue-700">Specific heat capacity (Cv)</td>
+                        <td className="py-2 px-3 text-sm text-blue-700">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono w-6 border-r border-blue-200 pr-2">cv</span>
+                            <span>Specific heat capacity (Cv)</span>
+                          </div>
+                        </td>
                         <td className="py-2 px-3 text-sm">{formatCalculatedValue(calculatedProperties?.specific_heat_cv)}</td>
-                        <td className="py-2 px-3 text-sm">J/(kg·K)</td>
+                        <td className="py-2 px-3 text-sm text-blue-500">J/(kg·K)</td>
                       </tr>
                       <tr className="border-b border-blue-50">
-                        <td className="py-2 px-3 text-sm text-blue-700">Specific heat ratio</td>
+                        <td className="py-2 px-3 text-sm text-blue-700">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono w-6 border-r border-blue-200 pr-2">κ</span>
+                            <span>Specific heat ratio</span>
+                          </div>
+                        </td>
                         <td className="py-2 px-3 text-sm">{formatCalculatedValue(calculatedProperties?.specific_heat_ratio)}</td>
-                        <td className="py-2 px-3 text-sm"></td>
+                        <td className="py-2 px-3 text-sm text-blue-500"></td>
                       </tr>
                       <tr className="border-b border-blue-50">
-                        <td className="py-2 px-3 text-sm text-blue-700">Specific gas constant</td>
+                        <td className="py-2 px-3 text-sm text-blue-700">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono w-6 border-r border-blue-200 pr-2">R</span>
+                            <span>Specific gas constant</span>
+                          </div>
+                        </td>
                         <td className="py-2 px-3 text-sm">{formatCalculatedValue(calculatedProperties?.specific_gas_constant)}</td>
-                        <td className="py-2 px-3 text-sm">J/(kg·K)</td>
+                        <td className="py-2 px-3 text-sm text-blue-500">J/(kg·K)</td>
                       </tr>
                       <tr className="border-b border-blue-50">
-                        <td className="py-2 px-3 text-sm text-blue-700">Specific gravity</td>
+                        <td className="py-2 px-3 text-sm text-blue-700">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono w-6 border-r border-blue-200 pr-2">SG</span>
+                            <span>Specific gravity</span>
+                          </div>
+                        </td>
                         <td className="py-2 px-3 text-sm">{formatCalculatedValue(calculatedProperties?.specific_gravity)}</td>
-                        <td className="py-2 px-3 text-sm"></td>
+                        <td className="py-2 px-3 text-sm text-blue-500"></td>
                       </tr>
                       <tr className="border-b border-blue-50">
-                        <td className="py-2 px-3 text-sm text-blue-700">Density</td>
+                        <td className="py-2 px-3 text-sm text-blue-700">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono w-6 border-r border-blue-200 pr-2">ρ</span>
+                            <span>Density</span>
+                          </div>
+                        </td>
                         <td className="py-2 px-3 text-sm">{formatCalculatedValue(calculatedProperties?.density)}</td>
-                        <td className="py-2 px-3 text-sm">kg/m³</td>
+                        <td className="py-2 px-3 text-sm text-blue-500">kg/m³</td>
                       </tr>
                       <tr className="border-b border-blue-50">
-                        <td className="py-2 px-3 text-sm text-blue-700">Compressibility factor</td>
+                        <td className="py-2 px-3 text-sm text-blue-700">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono w-6 border-r border-blue-200 pr-2">Z</span>
+                            <span>Compressibility factor</span>
+                          </div>
+                        </td>
                         <td className="py-2 px-3 text-sm">{formatCalculatedValue(calculatedProperties?.compressibility_factor)}</td>
-                        <td className="py-2 px-3 text-sm"></td>
+                        <td className="py-2 px-3 text-sm text-blue-500"></td>
                       </tr>
                       <tr className="border-b border-blue-50">
-                        <td className="py-2 px-3 text-sm text-blue-700">Speed of sound</td>
+                        <td className="py-2 px-3 text-sm text-blue-700">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono w-6 border-r border-blue-200 pr-2">a</span>
+                            <span>Speed of sound</span>
+                          </div>
+                        </td>
                         <td className="py-2 px-3 text-sm">{formatCalculatedValue(calculatedProperties?.speed_of_sound)}</td>
-                        <td className="py-2 px-3 text-sm">m/s</td>
+                        <td className="py-2 px-3 text-sm text-blue-500">m/s</td>
                       </tr>
                       <tr className="border-b border-blue-50">
-                        <td className="py-2 px-3 text-sm text-blue-700">Dew point</td>
+                        <td className="py-2 px-3 text-sm text-blue-700">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono w-6 border-r border-blue-200 pr-2">Td</span>
+                            <span>Dew point</span>
+                          </div>
+                        </td>
                         <td className="py-2 px-3 text-sm">{formatCalculatedValue(calculatedProperties?.dew_point)}</td>
-                        <td className="py-2 px-3 text-sm">°C</td>
+                        <td className="py-2 px-3 text-sm text-blue-500">°C</td>
                       </tr>
                     </tbody>
                   </table>
