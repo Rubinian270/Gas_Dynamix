@@ -63,7 +63,7 @@ export default function Home() {
             <Link href="/login">
               <Button
                 variant="ghost"
-                className="text-sm font-medium text-blue-700 hover:bg-blue-50 hover:text-blue-800 transition-all duration-300"
+                className="text-sm font-medium text-blue-700 bg-blue-400 hover:text-blue-800 transition-all duration-300"
               >
                 Log in
               </Button>

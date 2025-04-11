@@ -403,17 +403,17 @@ export function CaseDetails({
       setEditedGuaranteePoint(updatedData.guarantee_point);
       setEditedSuppress(updatedData.suppress);
       
-      setEditingInletSection(false);
-      setEditedInletValues({});
-      setEditedInletUnits({});
-
-      toast({
-        title: "Success",
-        description: "All inlet conditions updated successfully",
-      });
-
-      if (onCalculate) {
-        onCalculate();
+        setEditingInletSection(false);
+        setEditedInletValues({});
+        setEditedInletUnits({});
+        
+        toast({
+          title: "Success",
+          description: "All inlet conditions updated successfully",
+        });
+        
+        if (onCalculate) {
+          onCalculate();
       }
 
       // After successful save, update the current flow type
@@ -431,23 +431,53 @@ export function CaseDetails({
   };
 
   // Update the saveAllGasCompositions function
+  const [assumeCompositionAs100, setAssumeCompositionAs100] = useState(false);
+  const [showWarningDialog, setShowWarningDialog] = useState(false);
+  const [warningMessage, setWarningMessage] = useState("");
+
   const saveAllGasCompositions = async () => {
     try {
+      // Calculate total composition from edited values or current values
+      const totalComposition = Object.values(editedGasValues).length > 0
+        ? Object.values(editedGasValues).reduce((sum, val) => sum + (val || 0), 0)
+        : gasComposition.reduce((sum, gas) => sum + gas.value, 0);
+      
+      // Show warning if total is not 100% and assume100 is not checked
+      if (Math.abs(totalComposition - 100) > 0.001 && !assumeCompositionAs100) {
+        setWarningMessage(`Current total is ${totalComposition.toFixed(2)}%. Please ensure sum is 100% or select 'Assume composition as 100%'`);
+        setShowWarningDialog(true);
+        return;
+      }
+
       setIsSaving(true);
       const token = localStorage.getItem('access_token');
       
       if (!token) {
         throw new Error('Authentication required');
       }
-
+      
       const payload = gasComposition.map((gas, index) => ({
         gas_id: gas.id || 0,
         amount: editedGasValues[index] !== undefined ? editedGasValues[index] : gas.value,
         unit: editedGasUnits[index] || gas.unit
       }));
 
-      console.log('Sending payload:', payload);
+      // If assume100 is checked and total is not 100%, normalize the values
+      if (assumeCompositionAs100 && Math.abs(totalComposition - 100) > 0.001) {
+        const normalizationFactor = 100 / totalComposition;
+        payload.forEach(item => {
+          item.amount = Number((item.amount * normalizationFactor).toFixed(3));
+        });
+        
+        toast({
+          title: "Info",
+          description: "Gas compositions have been normalized to sum to 100%",
+          variant: "default",
+        });
+      }
 
+      console.log('Sending payload:', payload);
+        
       const response = await fetch(
         `https://gaxmixer-production.up.railway.app/projects/${projectId}/cases/${caseId}/gases/update_new/`, 
         {
@@ -547,7 +577,7 @@ export function CaseDetails({
       }];
 
       console.log('Sending payload:', payload);
-
+      
       const response = await fetch(
         `https://gaxmixer-production.up.railway.app/projects/${projectId}/cases/${caseId}/gases/update_new/`, 
         {
@@ -573,15 +603,15 @@ export function CaseDetails({
       const updatedGas = updatedGases[0];
 
       if (updatedGas) {
-        // Update local state
-        const updatedGasComposition = [...gasComposition];
-        updatedGasComposition[index] = {
-          ...updatedGasComposition[index],
+      // Update local state
+      const updatedGasComposition = [...gasComposition];
+      updatedGasComposition[index] = {
+        ...updatedGasComposition[index],
           value: updatedGas.amount,
           unit: updatedGas.unit
-        };
-        
-        setGasComposition(updatedGasComposition);
+      };
+      
+      setGasComposition(updatedGasComposition);
       }
       
       setEditingGas(null);
@@ -664,7 +694,7 @@ export function CaseDetails({
       if (gasComposition.length === 0) {
         throw new Error('No gas composition available');
       }
-
+      
       const response = await fetch(
         `https://gaxmixer-production.up.railway.app/projects/${projectId}/cases/${caseId}/calculate/`, 
         {
@@ -682,7 +712,7 @@ export function CaseDetails({
       
       const responseText = await response.text();
       console.log('Raw response:', responseText);
-
+      
       if (!response.ok) {
         console.error('Calculate response error:', {
           status: response.status,
@@ -906,260 +936,106 @@ export function CaseDetails({
   };
 
   return (
-    <Card className="border-blue-100 shadow-md">
-      <CardHeader className="bg-gradient-to-r from-blue-50 to-white border-b border-blue-100 py-2">
-        <CardTitle className="text-sm font-medium text-blue-800 flex items-center justify-between">
-          <span>{name}</span>
-          <div className="flex items-center gap-2">
-            <div className="relative">
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-6 text-xs border-blue-200 text-blue-700 hover:bg-blue-50"
-                onClick={calculateResults}
-                disabled={isCalculating}
-              >
-                {isCalculating ? (
-                  <>
-                    <Loader2 className="h-3 w-3 mr-1 animate-spin" /> Calculating...
-                  </>
-                ) : (
-                  <>
-                    <Calculator className="h-3 w-3 mr-1" /> Calculate Results
-                  </>
-                )}
-              </Button>
-              
-              {calculationSuccess && (
-                <div className="absolute -right-4 -top-4 bg-green-100 text-green-700 rounded-full px-2 py-0.5 text-xs flex items-center gap-1 border border-green-200 shadow-sm animate-fadeIn">
-                  <CheckCircle2 className="h-3 w-3" /> Calculated!
-                </div>
-              )}
+    <>
+      <Dialog open={showWarningDialog} onOpenChange={setShowWarningDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-semibold text-red-600">
+              Gas Composition Warning
+            </DialogTitle>
+          </DialogHeader>
+          <div className="p-6">
+            <div className="flex flex-col items-center space-y-4">
+              <div className="p-3 bg-red-50 rounded-full">
+                <X className="h-6 w-6 text-red-600" />
+              </div>
+              <p className="text-center text-gray-700">
+                {warningMessage}
+              </p>
             </div>
-            <span className="text-xs text-blue-600">Case Details</span>
           </div>
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <Tabs defaultValue="gas" className="w-full" value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="mb-4 bg-blue-50/50 p-1 border border-blue-100 rounded-md">
-            <TabsTrigger value="gas" className="text-xs data-[state=active]:bg-white data-[state=active]:text-blue-700">
-              Gas Composition
-            </TabsTrigger>
-            <TabsTrigger value="inlet" className="text-xs data-[state=active]:bg-white data-[state=active]:text-blue-700">
-              Project Properties
-            </TabsTrigger>
-            {calculatedProperties && (
-              <TabsTrigger value="calculated" className="text-xs data-[state=active]:bg-white data-[state=active]:text-blue-700">
-                Calculated Properties
-              </TabsTrigger>
-            )}
-          </TabsList>
-          
-          <TabsContent value="inlet" className="space-y-4">
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <h3 className="text-xs font-semibold text-blue-800">Project properties</h3>
-                {!editingInletSection ? (
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    className="h-6 text-xs border-blue-200 text-blue-700 hover:bg-blue-50"
-                    onClick={startEditingInletSection}
-                  >
-                    <Edit className="h-3 w-3 mr-1" /> Edit All
-                  </Button>
-                ) : (
-                  <div className="flex gap-2">
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      className="h-6 text-xs border-red-200 text-red-700 hover:bg-red-50"
-                      onClick={cancelEditingInletSection}
-                      disabled={isSaving}
-                    >
-                      <X className="h-3 w-3 mr-1" /> Cancel
-                    </Button>
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      className="h-6 text-xs border-green-200 text-green-700 hover:bg-green-50"
-                      onClick={saveAllInletConditions}
-                      disabled={isSaving}
-                    >
-                      {isSaving ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <Save className="h-3 w-3 mr-1" />} 
-                      Save All
-                    </Button>
+          <div className="flex justify-end space-x-2">
+            <Button
+              variant="outline"
+              onClick={() => setShowWarningDialog(false)}
+              className="border-red-200 text-red-700 hover:bg-red-50"
+            >
+              Close
+            </Button>
+            <Button
+              onClick={() => {
+                setAssumeCompositionAs100(true);
+                setShowWarningDialog(false);
+                saveAllGasCompositions();
+              }}
+              className="bg-blue-600 text-white hover:bg-blue-700"
+            >
+              Assume as 100%
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Card className="border-blue-100 shadow-md">
+        <CardHeader className="bg-gradient-to-r from-blue-50 to-white border-b border-blue-100 py-2">
+          <CardTitle className="text-sm font-medium text-blue-800 flex items-center justify-between">
+            <span>{name}</span>
+            <div className="flex items-center gap-2">
+              <div className="relative">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-6 text-xs border-blue-200 text-blue-700 hover:bg-blue-50"
+                  onClick={calculateResults}
+                  disabled={isCalculating}
+                >
+                  {isCalculating ? (
+                    <>
+                      <Loader2 className="h-3 w-3 mr-1 animate-spin" /> Calculating...
+                    </>
+                  ) : (
+                    <>
+                      <Calculator className="h-3 w-3 mr-1" /> Calculate Results
+                    </>
+                  )}
+                </Button>
+                
+                {calculationSuccess && (
+                  <div className="absolute -right-4 -top-4 bg-green-100 text-green-700 rounded-full px-2 py-0.5 text-xs flex items-center gap-1 border border-green-200 shadow-sm animate-fadeIn">
+                    <CheckCircle2 className="h-3 w-3" /> Calculated!
                   </div>
                 )}
               </div>
-              <Table>
-                <TableHeader className="bg-blue-50/50">
-                  <TableRow className="h-6">
-                    <TableHead className="w-1/3 py-1 text-xs font-medium">Property</TableHead>
-                    <TableHead className="w-24 py-1 text-xs font-medium">UoM</TableHead>
-                    <TableHead className="py-1 text-xs font-medium">Value</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {inletConditions.map((condition, index) => (
-                    <TableRow key={index} className="h-6 hover:bg-blue-50/30">
-                      <TableCell className="py-0.5 text-xs text-blue-800">
-                        <div className="flex items-center gap-2">
-                          <span className="font-mono w-6 border-r border-blue-200 pr-2">
-                            {index === 0 ? "D" : 
-                             index === 1 ? "pa" :
-                             index === 2 ? "Ta" :
-                             index === 3 ? "p" :
-                             index === 4 ? "T" :
-                             index === 5 ? "ṁ" : ""}
-                          </span>
-                          <span>
-                            {condition.name.toLowerCase().includes('flow') ? (
-                              editingInletSection ? (
-                                <select
-                                  value={editedFlowType}
-                                  onChange={(e) => setEditedFlowType(e.target.value)}
-                                  className="w-full bg-white border border-blue-200 p-0.5 text-xs focus:ring-1 focus:ring-blue-300 rounded"
-                                >
-                                  {Object.values(FlowType).map(type => (
-                                    <option key={type} value={type}>{type}</option>
-                                  ))}
-                                </select>
-                              ) : (
-                                currentFlowType
-                              )
-                            ) : (
-                              condition.name
-                            )}
-                          </span>
-                        </div>
-                      </TableCell>
-                      <TableCell className="py-0.5 text-xs text-blue-600">
-                        {editingInletSection ? (
-                          <select
-                            value={editedInletUnits[index] !== undefined ? editedInletUnits[index] : condition.unit}
-                            onChange={(e) => setEditedInletUnits({
-                              ...editedInletUnits,
-                              [index]: e.target.value
-                            })}
-                            className="w-full bg-white border border-blue-200 p-0.5 text-xs focus:ring-1 focus:ring-blue-300 rounded"
-                          >
-                            {condition.name.toLowerCase().includes('pressure') && (
-                              Object.values(PressureUnit).map(unit => (
-                                <option key={unit} value={unit}>{unit}</option>
-                              ))
-                            )}
-                            {condition.name.toLowerCase().includes('temperature') && (
-                              Object.values(TemperatureUnit).map(unit => (
-                                <option key={unit} value={unit}>{unit}</option>
-                              ))
-                            )}
-                            {condition.name.toLowerCase().includes('flow') && (
-                              Object.values(FlowUnit).map(unit => (
-                                <option key={unit} value={unit}>{unit}</option>
-                              ))
-                            )}
-                          </select>
-                        ) : (
-                          condition.unit
-                        )}
-                      </TableCell>
-                      <TableCell className="py-0.5 relative">
-                        {editingInlet === index && !editingInletSection ? (
-                          <div className="flex items-center">
-                            <input
-                              type="text"
-                              value={editValue}
-                              onChange={(e) => setEditValue(e.target.value)}
-                              onKeyDown={(e) => handleKeyDown(e, 'inlet', index)}
-                              className="w-full bg-white border border-blue-200 p-0.5 text-xs focus:ring-1 focus:ring-blue-300 rounded"
-                              autoFocus
-                            />
-                            <Button 
-                              size="sm" 
-                              variant="ghost" 
-                              className="h-5 w-5 p-0 ml-1"
-                              onClick={() => saveInletCondition(index)}
-                              disabled={isSaving}
-                            >
-                              {isSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
-                            </Button>
-                          </div>
-                        ) : editingInletSection ? (
-                          <input
-                            type="text"
-                            value={editedInletValues[index] !== undefined ? editedInletValues[index] : condition.value}
-                            onChange={(e) => handleInletValueChange(index, e.target.value)}
-                            className="w-full bg-white border border-blue-200 p-0.5 text-xs focus:ring-1 focus:ring-blue-300 rounded"
-                          />
-                        ) : (
-                          <input
-                            type="text"
-                            value={condition.value}
-                            className="w-full bg-transparent border-0 p-0 text-xs focus:ring-0 cursor-pointer hover:bg-blue-50"
-                            onClick={() => startEditingInlet(index, condition.value)}
-                            readOnly
-                          />
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                  <TableRow className="h-6">
-                    <TableCell className="py-0.5 text-xs">Guarantee point</TableCell>
-                    <TableCell colSpan={2} className="py-0.5">
-                      <Checkbox 
-                        checked={editingInletSection ? editedGuaranteePoint : guaranteePoint}
-                        onCheckedChange={(checked) => {
-                          if (editingInletSection) {
-                            setEditedGuaranteePoint(checked as boolean);
-                          }
-                        }}
-                        className="h-3 w-3"
-                        disabled={!editingInletSection || isSaving}
-                      />
-                    </TableCell>
-                  </TableRow>
-                  <TableRow className="h-6">
-                    <TableCell className="py-0.5 text-xs">Suppress</TableCell>
-                    <TableCell colSpan={2} className="py-0.5">
-                      <Checkbox 
-                        checked={editingInletSection ? editedSuppress : suppress}
-                        onCheckedChange={(checked) => {
-                          if (editingInletSection) {
-                            setEditedSuppress(checked as boolean);
-                          }
-                        }}
-                        className="h-3 w-3"
-                        disabled={!editingInletSection || isSaving}
-                      />
-                    </TableCell>
-                  </TableRow>
-                </TableBody>
-              </Table>
+              <span className="text-xs text-blue-600">Case Details</span>
             </div>
-          </TabsContent>
-          
-          <TabsContent value="gas" className="space-y-4">
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <h3 className="text-xs font-semibold text-blue-800">Gas composition</h3>
-                <div className="flex gap-2">
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    className="h-6 text-xs border-blue-200 text-blue-700 hover:bg-blue-50"
-                    onClick={() => setIsSelectGasOpen(true)}
-                  >
-                    Select gas components
-                  </Button>
-                  
-                  {!editingGasSection ? (
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Tabs defaultValue="gas" className="w-full" value={activeTab} onValueChange={setActiveTab}>
+            <TabsList className="mb-4 bg-blue-50/50 p-1 border border-blue-100 rounded-md">
+              <TabsTrigger value="gas" className="text-xs data-[state=active]:bg-white data-[state=active]:text-blue-700">
+                Gas Composition
+              </TabsTrigger>
+              <TabsTrigger value="inlet" className="text-xs data-[state=active]:bg-white data-[state=active]:text-blue-700">
+                Project Properties
+              </TabsTrigger>
+              {calculatedProperties && (
+                <TabsTrigger value="calculated" className="text-xs data-[state=active]:bg-white data-[state=active]:text-blue-700">
+                  Calculated Properties
+                </TabsTrigger>
+              )}
+            </TabsList>
+            
+            <TabsContent value="inlet" className="space-y-4">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-semibold text-blue-800">Project properties</h3>
+                  {!editingInletSection ? (
                     <Button 
                       variant="outline" 
                       size="sm" 
                       className="h-6 text-xs border-blue-200 text-blue-700 hover:bg-blue-50"
-                      onClick={startEditingGasSection}
+                      onClick={startEditingInletSection}
                     >
                       <Edit className="h-3 w-3 mr-1" /> Edit All
                     </Button>
@@ -1169,7 +1045,7 @@ export function CaseDetails({
                         variant="outline" 
                         size="sm" 
                         className="h-6 text-xs border-red-200 text-red-700 hover:bg-red-50"
-                        onClick={cancelEditingGasSection}
+                        onClick={cancelEditingInletSection}
                         disabled={isSaving}
                       >
                         <X className="h-3 w-3 mr-1" /> Cancel
@@ -1178,7 +1054,7 @@ export function CaseDetails({
                         variant="outline" 
                         size="sm" 
                         className="h-6 text-xs border-green-200 text-green-700 hover:bg-green-50"
-                        onClick={saveAllGasCompositions}
+                        onClick={saveAllInletConditions}
                         disabled={isSaving}
                       >
                         {isSaving ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <Save className="h-3 w-3 mr-1" />} 
@@ -1187,344 +1063,544 @@ export function CaseDetails({
                     </div>
                   )}
                 </div>
-              </div>
-              <Table>
-                <TableHeader className="bg-blue-50/50">
-                  <TableRow className="h-6">
-                    <TableHead className="w-8 py-1 text-xs font-medium">#</TableHead>
-                    <TableHead className="py-1 text-xs font-medium">Component</TableHead>
-                    <TableHead className="w-24 py-1 text-xs font-medium text-right">Value</TableHead>
-                    <TableHead className="w-24 py-1 text-xs font-medium text-right">Unit</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {gasComposition.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={4} className="py-4 text-center text-sm text-blue-600">
-                        No gas components selected. Please click "Select gas components" to add gases.
+                <Table>
+                  <TableHeader className="bg-blue-50/50">
+                    <TableRow className="h-6">
+                      <TableHead className="w-1/3 py-1 text-xs font-medium">Property</TableHead>
+                      <TableHead className="w-24 py-1 text-xs font-medium">UoM</TableHead>
+                      <TableHead className="py-1 text-xs font-medium">Value</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {inletConditions.map((condition, index) => (
+                      <TableRow key={index} className="h-6 hover:bg-blue-50/30">
+                        <TableCell className="py-0.5 text-xs text-blue-800">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono w-6 border-r border-blue-200 pr-2">
+                              {index === 0 ? "D" : 
+                               index === 1 ? "pa" :
+                               index === 2 ? "Ta" :
+                               index === 3 ? "p" :
+                               index === 4 ? "T" :
+                               index === 5 ? "ṁ" : ""}
+                            </span>
+                            <span>
+                              {condition.name.toLowerCase().includes('flow') ? (
+                                editingInletSection ? (
+                                  <select
+                                    value={editedFlowType}
+                                    onChange={(e) => setEditedFlowType(e.target.value)}
+                                    className="w-full bg-white border border-blue-200 p-0.5 text-xs focus:ring-1 focus:ring-blue-300 rounded"
+                                  >
+                                    {Object.values(FlowType).map(type => (
+                                      <option key={type} value={type}>{type}</option>
+                                    ))}
+                                  </select>
+                                ) : (
+                                  currentFlowType
+                                )
+                              ) : (
+                                condition.name
+                              )}
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="py-0.5 text-xs text-blue-600">
+                          {editingInletSection ? (
+                            <select
+                              value={editedInletUnits[index] !== undefined ? editedInletUnits[index] : condition.unit}
+                              onChange={(e) => setEditedInletUnits({
+                                ...editedInletUnits,
+                                [index]: e.target.value
+                              })}
+                              className="w-full bg-white border border-blue-200 p-0.5 text-xs focus:ring-1 focus:ring-blue-300 rounded"
+                            >
+                              {condition.name.toLowerCase().includes('pressure') && (
+                                Object.values(PressureUnit).map(unit => (
+                                  <option key={unit} value={unit}>{unit}</option>
+                                ))
+                              )}
+                              {condition.name.toLowerCase().includes('temperature') && (
+                                Object.values(TemperatureUnit).map(unit => (
+                                  <option key={unit} value={unit}>{unit}</option>
+                                ))
+                              )}
+                              {condition.name.toLowerCase().includes('flow') && (
+                                Object.values(FlowUnit).map(unit => (
+                                  <option key={unit} value={unit}>{unit}</option>
+                                ))
+                              )}
+                            </select>
+                          ) : (
+                            condition.unit
+                          )}
+                        </TableCell>
+                        <TableCell className="py-0.5 relative">
+                          {editingInlet === index && !editingInletSection ? (
+                            <div className="flex items-center">
+                              <input
+                                type="text"
+                                value={editValue}
+                                onChange={(e) => setEditValue(e.target.value)}
+                                onKeyDown={(e) => handleKeyDown(e, 'inlet', index)}
+                                className="w-full bg-white border border-blue-200 p-0.5 text-xs focus:ring-1 focus:ring-blue-300 rounded"
+                                autoFocus
+                              />
+                              <Button 
+                                size="sm" 
+                                variant="ghost" 
+                                className="h-5 w-5 p-0 ml-1"
+                                onClick={() => saveInletCondition(index)}
+                                disabled={isSaving}
+                              >
+                                {isSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+                              </Button>
+                            </div>
+                          ) : editingInletSection ? (
+                            <input
+                              type="text"
+                              value={editedInletValues[index] !== undefined ? editedInletValues[index] : condition.value}
+                              onChange={(e) => handleInletValueChange(index, e.target.value)}
+                              className="w-full bg-white border border-blue-200 p-0.5 text-xs focus:ring-1 focus:ring-blue-300 rounded"
+                            />
+                          ) : (
+                            <input
+                              type="text"
+                              value={condition.value}
+                              className="w-full bg-transparent border-0 p-0 text-xs focus:ring-0 cursor-pointer hover:bg-blue-50"
+                              onClick={() => startEditingInlet(index, condition.value)}
+                              readOnly
+                            />
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    <TableRow className="h-6">
+                      <TableCell className="py-0.5 text-xs">Guarantee point</TableCell>
+                      <TableCell colSpan={2} className="py-0.5">
+                        <Checkbox 
+                          checked={editingInletSection ? editedGuaranteePoint : guaranteePoint}
+                          onCheckedChange={(checked) => {
+                            if (editingInletSection) {
+                              setEditedGuaranteePoint(checked as boolean);
+                            }
+                          }}
+                          className="h-3 w-3"
+                          disabled={!editingInletSection || isSaving}
+                        />
                       </TableCell>
                     </TableRow>
-                  ) : (
-                    <>
-                      {gasComposition.map((gas, index) => (
-                        <TableRow key={gas.id || index} className="h-6 hover:bg-blue-50/30">
-                          <TableCell className="py-0.5 text-xs">{index + 1}</TableCell>
-                          <TableCell className="py-0.5 text-xs text-blue-800">
-                            {gas.name}
-                          </TableCell>
-                          <TableCell className="py-0.5 text-right relative">
-                            {editingGas === index && !editingGasSection ? (
-                              <div className="flex items-center justify-end">
+                    <TableRow className="h-6">
+                      <TableCell className="py-0.5 text-xs">Suppress</TableCell>
+                      <TableCell colSpan={2} className="py-0.5">
+                        <Checkbox 
+                          checked={editingInletSection ? editedSuppress : suppress}
+                          onCheckedChange={(checked) => {
+                            if (editingInletSection) {
+                              setEditedSuppress(checked as boolean);
+                            }
+                          }}
+                          className="h-3 w-3"
+                          disabled={!editingInletSection || isSaving}
+                        />
+                      </TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              </div>
+            </TabsContent>
+            
+            <TabsContent value="gas" className="space-y-4">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-semibold text-blue-800">Gas composition</h3>
+                  <div className="flex gap-2">
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="h-6 text-xs border-blue-200 text-blue-700 hover:bg-blue-50"
+                      onClick={() => setIsSelectGasOpen(true)}
+                    >
+                      Select gas components
+                    </Button>
+                    
+                    {!editingGasSection ? (
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="h-6 text-xs border-blue-200 text-blue-700 hover:bg-blue-50"
+                        onClick={startEditingGasSection}
+                      >
+                        <Edit className="h-3 w-3 mr-1" /> Edit All
+                      </Button>
+                    ) : (
+                      <div className="flex gap-2">
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          className="h-6 text-xs border-red-200 text-red-700 hover:bg-red-50"
+                          onClick={cancelEditingGasSection}
+                          disabled={isSaving}
+                        >
+                          <X className="h-3 w-3 mr-1" /> Cancel
+                        </Button>
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          className="h-6 text-xs border-green-200 text-green-700 hover:bg-green-50"
+                          onClick={saveAllGasCompositions}
+                          disabled={isSaving}
+                        >
+                          {isSaving ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <Save className="h-3 w-3 mr-1" />} 
+                          Save All
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <Table>
+                  <TableHeader className="bg-blue-50/50">
+                    <TableRow className="h-6">
+                      <TableHead className="w-8 py-1 text-xs font-medium">#</TableHead>
+                      <TableHead className="py-1 text-xs font-medium">Component</TableHead>
+                      <TableHead className="w-24 py-1 text-xs font-medium text-right">Value</TableHead>
+                      <TableHead className="w-24 py-1 text-xs font-medium text-right">Unit</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {gasComposition.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={4} className="py-4 text-center text-sm text-blue-600">
+                          No gas components selected. Please click "Select gas components" to add gases.
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      <>
+                        {gasComposition.map((gas, index) => (
+                          <TableRow key={gas.id || index} className="h-6 hover:bg-blue-50/30">
+                            <TableCell className="py-0.5 text-xs">{index + 1}</TableCell>
+                            <TableCell className="py-0.5 text-xs text-blue-800">
+                              {gas.name}
+                            </TableCell>
+                            <TableCell className="py-0.5 text-right relative">
+                              {editingGas === index && !editingGasSection ? (
+                                <div className="flex items-center justify-end">
+                                  <input
+                                    type="number"
+                                    value={editValue}
+                                    onChange={(e) => setEditValue(e.target.value)}
+                                    onKeyDown={(e) => handleKeyDown(e, 'gas', index)}
+                                    className="w-full bg-white border border-blue-200 p-0.5 text-xs focus:ring-1 focus:ring-blue-300 rounded text-right"
+                                    step="0.001"
+                                    min="0"
+                                    max="100"
+                                    autoFocus
+                                  />
+                                  <Button 
+                                    size="sm" 
+                                    variant="ghost" 
+                                    className="h-5 w-5 p-0 ml-1"
+                                    onClick={() => saveGasComposition(index)}
+                                    disabled={isSaving}
+                                  >
+                                    {isSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+                                  </Button>
+                                </div>
+                              ) : editingGasSection ? (
                                 <input
                                   type="number"
-                                  value={editValue}
-                                  onChange={(e) => setEditValue(e.target.value)}
-                                  onKeyDown={(e) => handleKeyDown(e, 'gas', index)}
+                                  value={editedGasValues[index] !== undefined ? editedGasValues[index] : gas.value}
+                                  onChange={(e) => handleGasValueChange(index, e.target.value)}
                                   className="w-full bg-white border border-blue-200 p-0.5 text-xs focus:ring-1 focus:ring-blue-300 rounded text-right"
                                   step="0.001"
                                   min="0"
                                   max="100"
-                                  autoFocus
                                 />
-                                <Button 
-                                  size="sm" 
-                                  variant="ghost" 
-                                  className="h-5 w-5 p-0 ml-1"
-                                  onClick={() => saveGasComposition(index)}
-                                  disabled={isSaving}
+                              ) : (
+                                <input
+                                  type="text"
+                                  value={gas.value.toFixed(3)}
+                                  className="w-full bg-transparent border-0 p-0 text-xs focus:ring-0 text-right cursor-pointer hover:bg-blue-50"
+                                  onClick={() => startEditingGas(index, gas.value)}
+                                  readOnly
+                                />
+                              )}
+                            </TableCell>
+                            <TableCell className="py-0.5 text-xs text-right">
+                              {editingGasSection ? (
+                                <select
+                                  value={editedGasUnits[index] || gas.unit}
+                                  onChange={(e) => handleGasUnitChange(index, e.target.value)}
+                                  className="w-full bg-white border border-blue-200 p-0.5 text-xs focus:ring-1 focus:ring-blue-300 rounded text-right"
                                 >
-                                  {isSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
-                                </Button>
-                              </div>
-                            ) : editingGasSection ? (
-                              <input
-                                type="number"
-                                value={editedGasValues[index] !== undefined ? editedGasValues[index] : gas.value}
-                                onChange={(e) => handleGasValueChange(index, e.target.value)}
-                                className="w-full bg-white border border-blue-200 p-0.5 text-xs focus:ring-1 focus:ring-blue-300 rounded text-right"
-                                step="0.001"
-                                min="0"
-                                max="100"
-                              />
-                            ) : (
-                              <input
-                                type="text"
-                                value={gas.value.toFixed(3)}
-                                className="w-full bg-transparent border-0 p-0 text-xs focus:ring-0 text-right cursor-pointer hover:bg-blue-50"
-                                onClick={() => startEditingGas(index, gas.value)}
-                                readOnly
-                              />
-                            )}
+                                  {Object.values(GasUnit).map(unit => (
+                                    <option key={unit} value={unit}>{unit}</option>
+                                  ))}
+                                </select>
+                              ) : (
+                                gas.unit
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                        <TableRow className="h-6 border-t border-blue-200">
+                          <TableCell className="py-0.5" />
+                          <TableCell className="py-0.5 text-xs font-medium text-blue-800">
+                            Total
                           </TableCell>
-                          <TableCell className="py-0.5 text-xs text-right">
-                            {editingGasSection ? (
-                              <select
-                                value={editedGasUnits[index] || gas.unit}
-                                onChange={(e) => handleGasUnitChange(index, e.target.value)}
-                                className="w-full bg-white border border-blue-200 p-0.5 text-xs focus:ring-1 focus:ring-blue-300 rounded text-right"
-                              >
-                                {Object.values(GasUnit).map(unit => (
-                                  <option key={unit} value={unit}>{unit}</option>
-                                ))}
-                              </select>
-                            ) : (
-                              gas.unit
-                            )}
+                          <TableCell className="py-0.5 text-xs font-medium text-right">
+                            {editingGasSection 
+                              ? Object.values(editedGasValues).reduce((sum, val) => sum + (val || 0), 0).toFixed(3)
+                              : totalComposition.toFixed(3)
+                            }
+                          </TableCell>
+                          <TableCell className="py-0.5 text-xs font-medium text-right">
+                            {getTotalUnit()}
                           </TableCell>
                         </TableRow>
-                      ))}
-                      <TableRow className="h-6 border-t border-blue-200">
-                        <TableCell className="py-0.5" />
-                        <TableCell className="py-0.5 text-xs font-medium text-blue-800">
-                          Total
-                        </TableCell>
-                        <TableCell className="py-0.5 text-xs font-medium text-right">
-                          {editingGasSection 
-                            ? Object.values(editedGasValues).reduce((sum, val) => sum + (val || 0), 0).toFixed(3)
-                            : totalComposition.toFixed(3)
-                          }
-                        </TableCell>
-                        <TableCell className="py-0.5 text-xs font-medium text-right">
-                          {getTotalUnit()}
-                        </TableCell>
-                      </TableRow>
-                    </>
-                  )}
-                </TableBody>
-              </Table>
-
-              <div className="mt-4">
-                <Table>
-                  <TableHeader className="bg-blue-50/50">
-                    <TableRow className="h-6">
-                      <TableHead className="py-1 text-xs font-medium">Unit</TableHead>
-                      <TableHead className="py-1 text-xs font-medium">Description</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {Object.entries(GasUnit).map(([key, value]) => (
-                      <TableRow key={key} className="h-6">
-                        <TableCell className="py-0.5 text-xs">{value}</TableCell>
-                        <TableCell className="py-0.5 text-xs">{key.toLowerCase().replace(/_/g, ' ')}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-
-              <div className="flex items-center gap-3 pt-1">
-                <div className="flex items-center gap-1">
-                  <Checkbox id="assume-100" className="h-3 w-3" />
-                  <label htmlFor="assume-100" className="text-xs text-blue-700">
-                    Assume composition as 100%
-                  </label>
-                </div>
-                <button className="text-xs text-blue-600 hover:text-blue-800">
-                  Finish
-                </button>
-              </div>
-            </div>
-          </TabsContent>
-          
-          {calculatedProperties && (
-            <TabsContent value="calculated" className="space-y-4">
-              <div className="space-y-4">
-                <h3 className="text-lg font-medium text-blue-800">Calculated properties</h3>
-                <div className="overflow-x-auto">
-                  <table className="min-w-full border-collapse">
-                    <thead>
-                      <tr className="bg-blue-50 border-b border-blue-100">
-                        <th className="py-2 px-3 text-left text-sm font-medium text-blue-700">Property</th>
-                        <th className="py-2 px-3 text-left text-sm font-medium text-blue-700">Value</th>
-                        <th className="py-2 px-3 text-left text-sm font-medium text-blue-700">Unit</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr className="border-b border-blue-50">
-                        <td className="py-2 px-3 text-sm text-blue-700">
-                          <div className="flex items-center gap-2">
-                            <span className="font-mono w-6 border-r border-blue-200 pr-2">M</span>
-                            <span>Molar mass</span>
-                          </div>
-                        </td>
-                        <td className="py-2 px-3 text-sm">{formatCalculatedValue(calculatedProperties?.molar_mass)}</td>
-                        <td className="py-2 px-3 text-sm text-blue-500">kg/mol</td>
-                      </tr>
-                      <tr className="border-b border-blue-50">
-                        <td className="py-2 px-3 text-sm text-blue-700">
-                          <div className="flex items-center gap-2">
-                            <span className="font-mono w-6 border-r border-blue-200 pr-2">V̇</span>
-                            <span>Volumetric flow</span>
-                          </div>
-                        </td>
-                        <td className="py-2 px-3 text-sm">{formatCalculatedValue(calculatedProperties?.volumetric_flow)}</td>
-                        <td className="py-2 px-3 text-sm text-blue-500">m³/h</td>
-                      </tr>
-                      <tr className="border-b border-blue-50">
-                        <td className="py-2 px-3 text-sm text-blue-700">
-                          <div className="flex items-center gap-2">
-                            <span className="font-mono w-6 border-r border-blue-200 pr-2">V̇n</span>
-                            <span>Standard volumetric flow</span>
-                          </div>
-                        </td>
-                        <td className="py-2 px-3 text-sm">{formatCalculatedValue(calculatedProperties?.standard_volumetric_flow)}</td>
-                        <td className="py-2 px-3 text-sm text-blue-500">Nm³/h, DIN 1343</td>
-                      </tr>
-                      <tr className="border-b border-blue-50">
-                        <td className="py-2 px-3 text-sm text-blue-700">
-                          <div className="flex items-center gap-2">
-                            <span className="font-mono w-6 border-r border-blue-200 pr-2">x</span>
-                            <span>Vapour mole fraction</span>
-                          </div>
-                        </td>
-                        <td className="py-2 px-3 text-sm">{formatCalculatedValue(calculatedProperties?.vapor_mole_fraction)}</td>
-                        <td className="py-2 px-3 text-sm text-blue-500"></td>
-                      </tr>
-                      <tr className="border-b border-blue-50">
-                        <td className="py-2 px-3 text-sm text-blue-700">
-                          <div className="flex items-center gap-2">
-                            <span className="font-mono w-6 border-r border-blue-200 pr-2">φ</span>
-                            <span>Relative humidity</span>
-                          </div>
-                        </td>
-                        <td className="py-2 px-3 text-sm">{formatCalculatedValue(calculatedProperties?.relative_humidity)}</td>
-                        <td className="py-2 px-3 text-sm text-blue-500">%</td>
-                      </tr>
-                      <tr className="border-b border-blue-50">
-                        <td className="py-2 px-3 text-sm text-blue-700">
-                          <div className="flex items-center gap-2">
-                            <span className="font-mono w-6 border-r border-blue-200 pr-2">cp</span>
-                            <span>Specific heat capacity (Cp)</span>
-                          </div>
-                        </td>
-                        <td className="py-2 px-3 text-sm">{formatCalculatedValue(calculatedProperties?.specific_heat_cp)}</td>
-                        <td className="py-2 px-3 text-sm text-blue-500">J/(kg·K)</td>
-                      </tr>
-                      <tr className="border-b border-blue-50">
-                        <td className="py-2 px-3 text-sm text-blue-700">
-                          <div className="flex items-center gap-2">
-                            <span className="font-mono w-6 border-r border-blue-200 pr-2">cv</span>
-                            <span>Specific heat capacity (Cv)</span>
-                          </div>
-                        </td>
-                        <td className="py-2 px-3 text-sm">{formatCalculatedValue(calculatedProperties?.specific_heat_cv)}</td>
-                        <td className="py-2 px-3 text-sm text-blue-500">J/(kg·K)</td>
-                      </tr>
-                      <tr className="border-b border-blue-50">
-                        <td className="py-2 px-3 text-sm text-blue-700">
-                          <div className="flex items-center gap-2">
-                            <span className="font-mono w-6 border-r border-blue-200 pr-2">κ</span>
-                            <span>Specific heat ratio</span>
-                          </div>
-                        </td>
-                        <td className="py-2 px-3 text-sm">{formatCalculatedValue(calculatedProperties?.specific_heat_ratio)}</td>
-                        <td className="py-2 px-3 text-sm text-blue-500"></td>
-                      </tr>
-                      <tr className="border-b border-blue-50">
-                        <td className="py-2 px-3 text-sm text-blue-700">
-                          <div className="flex items-center gap-2">
-                            <span className="font-mono w-6 border-r border-blue-200 pr-2">R</span>
-                            <span>Specific gas constant</span>
-                          </div>
-                        </td>
-                        <td className="py-2 px-3 text-sm">{formatCalculatedValue(calculatedProperties?.specific_gas_constant)}</td>
-                        <td className="py-2 px-3 text-sm text-blue-500">J/(kg·K)</td>
-                      </tr>
-                      <tr className="border-b border-blue-50">
-                        <td className="py-2 px-3 text-sm text-blue-700">
-                          <div className="flex items-center gap-2">
-                            <span className="font-mono w-6 border-r border-blue-200 pr-2">SG</span>
-                            <span>Specific gravity</span>
-                          </div>
-                        </td>
-                        <td className="py-2 px-3 text-sm">{formatCalculatedValue(calculatedProperties?.specific_gravity)}</td>
-                        <td className="py-2 px-3 text-sm text-blue-500"></td>
-                      </tr>
-                      <tr className="border-b border-blue-50">
-                        <td className="py-2 px-3 text-sm text-blue-700">
-                          <div className="flex items-center gap-2">
-                            <span className="font-mono w-6 border-r border-blue-200 pr-2">ρ</span>
-                            <span>Density</span>
-                          </div>
-                        </td>
-                        <td className="py-2 px-3 text-sm">{formatCalculatedValue(calculatedProperties?.density)}</td>
-                        <td className="py-2 px-3 text-sm text-blue-500">kg/m³</td>
-                      </tr>
-                      <tr className="border-b border-blue-50">
-                        <td className="py-2 px-3 text-sm text-blue-700">
-                          <div className="flex items-center gap-2">
-                            <span className="font-mono w-6 border-r border-blue-200 pr-2">Z</span>
-                            <span>Compressibility factor</span>
-                          </div>
-                        </td>
-                        <td className="py-2 px-3 text-sm">{formatCalculatedValue(calculatedProperties?.compressibility_factor)}</td>
-                        <td className="py-2 px-3 text-sm text-blue-500"></td>
-                      </tr>
-                      <tr className="border-b border-blue-50">
-                        <td className="py-2 px-3 text-sm text-blue-700">
-                          <div className="flex items-center gap-2">
-                            <span className="font-mono w-6 border-r border-blue-200 pr-2">a</span>
-                            <span>Speed of sound</span>
-                          </div>
-                        </td>
-                        <td className="py-2 px-3 text-sm">{formatCalculatedValue(calculatedProperties?.speed_of_sound)}</td>
-                        <td className="py-2 px-3 text-sm text-blue-500">m/s</td>
-                      </tr>
-                      <tr className="border-b border-blue-50">
-                        <td className="py-2 px-3 text-sm text-blue-700">
-                          <div className="flex items-center gap-2">
-                            <span className="font-mono w-6 border-r border-blue-200 pr-2">Td</span>
-                            <span>Dew point</span>
-                          </div>
-                        </td>
-                        <td className="py-2 px-3 text-sm">{formatCalculatedValue(calculatedProperties?.dew_point)}</td>
-                        <td className="py-2 px-3 text-sm text-blue-500">°C</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                  </div>
-                
-                <div className="flex justify-end space-x-2 mt-4">
-                  <Button
-                    variant="outline"
-                    className="border-blue-200 text-blue-700 hover:bg-blue-50"
-                    onClick={onCalculate}
-                    disabled={isCalculating}
-                  >
-                    <RefreshCw className="mr-2 h-4 w-4" />
-                    Refresh Data
-                  </Button>
-                  <Button
-                    className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white"
-                    onClick={calculateResults}
-                    disabled={isCalculating}
-                  >
-                    {isCalculating ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Calculating...
-                      </>
-                    ) : (
-                      <>
-                        <Calculator className="mr-2 h-4 w-4" />
-                        Calculate
                       </>
                     )}
-                  </Button>
+                  </TableBody>
+                </Table>
+
+                <div className="mt-4">
+                  <Table>
+                    <TableHeader className="bg-blue-50/50">
+                      <TableRow className="h-6">
+                        <TableHead className="py-1 text-xs font-medium">Unit</TableHead>
+                        <TableHead className="py-1 text-xs font-medium">Description</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {Object.entries(GasUnit).map(([key, value]) => (
+                        <TableRow key={key} className="h-6">
+                          <TableCell className="py-0.5 text-xs">{value}</TableCell>
+                          <TableCell className="py-0.5 text-xs">{key.toLowerCase().replace(/_/g, ' ')}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+
+                <div className="flex items-center gap-3 pt-1">
+                  <div className="flex items-center gap-1">
+                    <Checkbox 
+                      id="assume-100" 
+                      className="h-3 w-3" 
+                      checked={assumeCompositionAs100}
+                      onCheckedChange={(checked) => setAssumeCompositionAs100(checked as boolean)}
+                    />
+                    <label htmlFor="assume-100" className="text-xs text-blue-700">
+                      Assume composition as 100%
+                    </label>
                   </div>
+                  <button className="text-xs text-blue-600 hover:text-blue-800">
+                    Finish
+                  </button>
+                </div>
               </div>
             </TabsContent>
-          )}
-        </Tabs>
+            
+            {calculatedProperties && (
+              <TabsContent value="calculated" className="space-y-4">
+                <div className="space-y-4">
+                  <h3 className="text-lg font-medium text-blue-800">Calculated properties</h3>
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full border-collapse">
+                      <thead>
+                        <tr className="bg-blue-50 border-b border-blue-100">
+                          <th className="py-2 px-3 text-left text-sm font-medium text-blue-700">Property</th>
+                          <th className="py-2 px-3 text-left text-sm font-medium text-blue-700">Value</th>
+                          <th className="py-2 px-3 text-left text-sm font-medium text-blue-700">Unit</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr className="border-b border-blue-50">
+                          <td className="py-2 px-3 text-sm text-blue-700">
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono w-6 border-r border-blue-200 pr-2">M</span>
+                              <span>Molar mass</span>
+                            </div>
+                          </td>
+                          <td className="py-2 px-3 text-sm">{formatCalculatedValue(calculatedProperties?.molar_mass)}</td>
+                          <td className="py-2 px-3 text-sm text-blue-500">kg/mol</td>
+                        </tr>
+                        <tr className="border-b border-blue-50">
+                          <td className="py-2 px-3 text-sm text-blue-700">
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono w-6 border-r border-blue-200 pr-2">V̇</span>
+                              <span>Volumetric flow</span>
+                            </div>
+                          </td>
+                          <td className="py-2 px-3 text-sm">{formatCalculatedValue(calculatedProperties?.volumetric_flow)}</td>
+                          <td className="py-2 px-3 text-sm text-blue-500">m³/h</td>
+                        </tr>
+                        <tr className="border-b border-blue-50">
+                          <td className="py-2 px-3 text-sm text-blue-700">
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono w-6 border-r border-blue-200 pr-2">V̇n</span>
+                              <span>Standard volumetric flow</span>
+                            </div>
+                          </td>
+                          <td className="py-2 px-3 text-sm">{formatCalculatedValue(calculatedProperties?.standard_volumetric_flow)}</td>
+                          <td className="py-2 px-3 text-sm text-blue-500">Nm³/h, DIN 1343</td>
+                        </tr>
+                        <tr className="border-b border-blue-50">
+                          <td className="py-2 px-3 text-sm text-blue-700">
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono w-6 border-r border-blue-200 pr-2">x</span>
+                              <span>Vapour mole fraction</span>
+                            </div>
+                          </td>
+                          <td className="py-2 px-3 text-sm">{formatCalculatedValue(calculatedProperties?.vapor_mole_fraction)}</td>
+                          <td className="py-2 px-3 text-sm text-blue-500"></td>
+                        </tr>
+                        <tr className="border-b border-blue-50">
+                          <td className="py-2 px-3 text-sm text-blue-700">
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono w-6 border-r border-blue-200 pr-2">φ</span>
+                              <span>Relative humidity</span>
+                            </div>
+                          </td>
+                          <td className="py-2 px-3 text-sm">{formatCalculatedValue(calculatedProperties?.relative_humidity)}</td>
+                          <td className="py-2 px-3 text-sm text-blue-500">%</td>
+                        </tr>
+                        <tr className="border-b border-blue-50">
+                          <td className="py-2 px-3 text-sm text-blue-700">
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono w-6 border-r border-blue-200 pr-2">cp</span>
+                              <span>Specific heat capacity (Cp)</span>
+                            </div>
+                          </td>
+                          <td className="py-2 px-3 text-sm">{formatCalculatedValue(calculatedProperties?.specific_heat_cp)}</td>
+                          <td className="py-2 px-3 text-sm text-blue-500">J/(kg·K)</td>
+                        </tr>
+                        <tr className="border-b border-blue-50">
+                          <td className="py-2 px-3 text-sm text-blue-700">
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono w-6 border-r border-blue-200 pr-2">cv</span>
+                              <span>Specific heat capacity (Cv)</span>
+                            </div>
+                          </td>
+                          <td className="py-2 px-3 text-sm">{formatCalculatedValue(calculatedProperties?.specific_heat_cv)}</td>
+                          <td className="py-2 px-3 text-sm text-blue-500">J/(kg·K)</td>
+                        </tr>
+                        <tr className="border-b border-blue-50">
+                          <td className="py-2 px-3 text-sm text-blue-700">
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono w-6 border-r border-blue-200 pr-2">κ</span>
+                              <span>Specific heat ratio</span>
+                            </div>
+                          </td>
+                          <td className="py-2 px-3 text-sm">{formatCalculatedValue(calculatedProperties?.specific_heat_ratio)}</td>
+                          <td className="py-2 px-3 text-sm text-blue-500"></td>
+                        </tr>
+                        <tr className="border-b border-blue-50">
+                          <td className="py-2 px-3 text-sm text-blue-700">
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono w-6 border-r border-blue-200 pr-2">R</span>
+                              <span>Specific gas constant</span>
+                            </div>
+                          </td>
+                          <td className="py-2 px-3 text-sm">{formatCalculatedValue(calculatedProperties?.specific_gas_constant)}</td>
+                          <td className="py-2 px-3 text-sm text-blue-500">J/(kg·K)</td>
+                        </tr>
+                        <tr className="border-b border-blue-50">
+                          <td className="py-2 px-3 text-sm text-blue-700">
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono w-6 border-r border-blue-200 pr-2">SG</span>
+                              <span>Specific gravity</span>
+                            </div>
+                          </td>
+                          <td className="py-2 px-3 text-sm">{formatCalculatedValue(calculatedProperties?.specific_gravity)}</td>
+                          <td className="py-2 px-3 text-sm text-blue-500"></td>
+                        </tr>
+                        <tr className="border-b border-blue-50">
+                          <td className="py-2 px-3 text-sm text-blue-700">
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono w-6 border-r border-blue-200 pr-2">ρ</span>
+                              <span>Density</span>
+                            </div>
+                          </td>
+                          <td className="py-2 px-3 text-sm">{formatCalculatedValue(calculatedProperties?.density)}</td>
+                          <td className="py-2 px-3 text-sm text-blue-500">kg/m³</td>
+                        </tr>
+                        <tr className="border-b border-blue-50">
+                          <td className="py-2 px-3 text-sm text-blue-700">
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono w-6 border-r border-blue-200 pr-2">Z</span>
+                              <span>Compressibility factor</span>
+                            </div>
+                          </td>
+                          <td className="py-2 px-3 text-sm">{formatCalculatedValue(calculatedProperties?.compressibility_factor)}</td>
+                          <td className="py-2 px-3 text-sm text-blue-500"></td>
+                        </tr>
+                        <tr className="border-b border-blue-50">
+                          <td className="py-2 px-3 text-sm text-blue-700">
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono w-6 border-r border-blue-200 pr-2">a</span>
+                              <span>Speed of sound</span>
+                            </div>
+                          </td>
+                          <td className="py-2 px-3 text-sm">{formatCalculatedValue(calculatedProperties?.speed_of_sound)}</td>
+                          <td className="py-2 px-3 text-sm text-blue-500">m/s</td>
+                        </tr>
+                        <tr className="border-b border-blue-50">
+                          <td className="py-2 px-3 text-sm text-blue-700">
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono w-6 border-r border-blue-200 pr-2">Td</span>
+                              <span>Dew point</span>
+                            </div>
+                          </td>
+                          <td className="py-2 px-3 text-sm">{formatCalculatedValue(calculatedProperties?.dew_point)}</td>
+                          <td className="py-2 px-3 text-sm text-blue-500">°C</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                    </div>
+                  
+                  <div className="flex justify-end space-x-2 mt-4">
+                    <Button
+                      variant="outline"
+                      className="border-blue-200 text-blue-700 hover:bg-blue-50"
+                      onClick={onCalculate}
+                      disabled={isCalculating}
+                    >
+                      <RefreshCw className="mr-2 h-4 w-4" />
+                      Refresh Data
+                    </Button>
+                    <Button
+                      className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white"
+                      onClick={calculateResults}
+                      disabled={isCalculating}
+                    >
+                      {isCalculating ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Calculating...
+                        </>
+                      ) : (
+                        <>
+                          <Calculator className="mr-2 h-4 w-4" />
+                          Calculate
+                        </>
+                      )}
+                    </Button>
+                    </div>
+                </div>
+              </TabsContent>
+            )}
+          </Tabs>
 
-        <SelectGasModal
-          isOpen={isSelectGasOpen}
-          onClose={() => setIsSelectGasOpen(false)}
-          onSelect={handleGasSelection}
-          initialSelected={selectedGases}
-          projectId={projectId}
-        />
-      </CardContent>
-    </Card>
+          <SelectGasModal
+            isOpen={isSelectGasOpen}
+            onClose={() => setIsSelectGasOpen(false)}
+            onSelect={handleGasSelection}
+            initialSelected={selectedGases}
+            projectId={projectId}
+          />
+        </CardContent>
+      </Card>
+    </>
   );
 }
