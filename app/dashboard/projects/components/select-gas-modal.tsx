@@ -50,7 +50,7 @@ export function SelectGasModal({ isOpen, onClose, onSelect, initialSelected = []
           throw new Error('No authentication token found');
         }
 
-        const response = await fetch('https://gaxmixer-production.up.railway.app/gases/?limit=50', {
+        const response = await fetch('https://gaxmixer-production.up.railway.app/gases/?limit=130', {
           headers: {
             'Authorization': `Bearer ${token}`
           }
