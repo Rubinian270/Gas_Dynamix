@@ -155,6 +155,8 @@ export function CaseDetails({
         unit: GasUnit.MOL_PERCENT
       }));
 
+      console.log('Sending gas selection payload:', payload);
+
       const response = await fetch(
         `https://gaxmixer-production.up.railway.app/projects/${projectId}/cases/${caseId}/gases/update_new/`,
         {
@@ -171,6 +173,9 @@ export function CaseDetails({
         throw new Error('Failed to update gas selection');
       }
 
+      const data = await response.json();
+      console.log('Gas selection response:', data);
+
       toast({
         title: "Success",
         description: "Gas components updated successfully",
@@ -180,8 +185,16 @@ export function CaseDetails({
       // Close the modal
       setIsSelectGasOpen(false);
 
-      // Refresh the page after successful save
-      window.location.reload();
+      // If this is a new project (no existing gas composition)
+      if (gasComposition.length === 0) {
+        // Force reload the page to show newly selected gases
+        window.location.reload();
+      } else {
+        // For existing projects, optionally refresh data without full page reload
+        if (onCalculate) {
+          onCalculate();
+        }
+      }
     } catch (error) {
       console.error('Error updating gas selection:', error);
       toast({

@@ -319,7 +319,7 @@ export default function ProjectDetailPage() {
               gas_composition: matchingGasCase?.gas_compositions?.map((gas: any) => ({
                 id: gas.gas_id,
                 gas_id: gas.gas_id,
-                name: getGasName(gas.gas_id),
+                name:gas.gas_name,
                 value: gas.amount || 0,
                 unit: gas.unit || "mol %"
               })) || []
