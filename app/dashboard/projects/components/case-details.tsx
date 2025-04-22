@@ -62,10 +62,10 @@ type GasComposition = {
 
 interface CaseDetailsProps {
   key: number;
-  projectId: number; // Added project ID
-  caseId: number; // Added case ID
+  projectId: number;
+  caseId: number;
   name: string;
-  inletConditions: { name: string; value: string | number; unit: string; id?: number }[];
+  inletConditions: InletCondition[];  // Updated to use the InletCondition type
   gasComposition: { name: string; value: number; unit: string; id?: number }[];
   calculatedProperties?: {
     molar_mass?: number;
@@ -83,8 +83,8 @@ interface CaseDetailsProps {
     speed_of_sound?: number;
     dew_point?: number;
   };
-  onCalculate?: () => void; // Add a callback to refresh data after calculation
-  guaranteePoint?: boolean; // Add these new props
+  onCalculate?: () => void;
+  guaranteePoint?: boolean;
   suppress?: boolean;
 }
 
@@ -100,7 +100,7 @@ export function CaseDetails({
   suppress: initialSuppress = false
 }: CaseDetailsProps) {
   const [isSelectGasOpen, setIsSelectGasOpen] = useState(false);
-  const [inletConditions, setInletConditions] = useState(initialInletConditions);
+  const [inletConditions, setInletConditions] = useState<InletCondition[]>(initialInletConditions);
   const [gasComposition, setGasComposition] = useState(initialGasComposition);
   const [editingInlet, setEditingInlet] = useState<number | null>(null);
   const [editingGas, setEditingGas] = useState<number | null>(null);
@@ -116,10 +116,10 @@ export function CaseDetails({
   const [isCalculating, setIsCalculating] = useState(false);
   const [calculationSuccess, setCalculationSuccess] = useState(false);
   const [editedInletUnits, setEditedInletUnits] = useState<Record<number, string>>({});
-  const [guaranteePoint, setGuaranteePoint] = useState(initialInletConditions[0]?.guarantee_point || false);
-  const [suppress, setSuppress] = useState(initialInletConditions[0]?.suppress || false);
-  const [editedGuaranteePoint, setEditedGuaranteePoint] = useState(initialInletConditions[0]?.guarantee_point || false);
-  const [editedSuppress, setEditedSuppress] = useState(initialInletConditions[0]?.suppress || false);
+  const [guaranteePoint, setGuaranteePoint] = useState(initialGuaranteePoint);
+  const [suppress, setSuppress] = useState(initialSuppress);
+  const [editedGuaranteePoint, setEditedGuaranteePoint] = useState(initialGuaranteePoint);
+  const [editedSuppress, setEditedSuppress] = useState(initialSuppress);
   const [editedFlowType, setEditedFlowType] = useState<string>(FlowType.MASS_FLOW);
 
   // Initialize flow type state with a default value
@@ -148,7 +148,6 @@ export function CaseDetails({
         throw new Error('Authentication required');
       }
 
-      // Create payload for selected gases
       const payload = gases.map(gas => ({
         gas_id: gas.id,
         amount: 0,
@@ -173,8 +172,11 @@ export function CaseDetails({
         throw new Error('Failed to update gas selection');
       }
 
-      const data = await response.json();
-      console.log('Gas selection response:', data);
+      // After successful update, refresh gas compositions from backend
+      await refreshGasCompositions();
+
+      // Close the modal
+      setIsSelectGasOpen(false);
 
       toast({
         title: "Success",
@@ -182,18 +184,8 @@ export function CaseDetails({
         variant: "default",
       });
 
-      // Close the modal
-      setIsSelectGasOpen(false);
-
-      // If this is a new project (no existing gas composition)
-      if (gasComposition.length === 0) {
-        // Force reload the page to show newly selected gases
-        window.location.reload();
-      } else {
-        // For existing projects, optionally refresh data without full page reload
-        if (onCalculate) {
-          onCalculate();
-        }
+      if (onCalculate) {
+        onCalculate();
       }
     } catch (error) {
       console.error('Error updating gas selection:', error);
@@ -233,10 +225,12 @@ export function CaseDetails({
 
   const startEditingGasSection = () => {
     setEditingGasSection(true);
-    // Initialize edited values with current values
+    // Initialize edited values with current values using gas ID as key
     const initialValues: Record<number, number> = {};
-    gasComposition.forEach((gas, index) => {
-      initialValues[index] = gas.value;
+    gasComposition.forEach((gas) => {
+      if (gas.id) {
+        initialValues[gas.id] = gas.value;
+      }
     });
     setEditedGasValues(initialValues);
   };
@@ -259,10 +253,16 @@ export function CaseDetails({
   };
 
   const handleGasValueChange = (index: number, value: string) => {
-    setEditedGasValues({
-      ...editedGasValues,
-      [index]: parseFloat(value)
-    });
+    const gas = gasComposition[index];
+    if (gas.id !== undefined) {
+      const numericValue = parseFloat(value);
+      if (!isNaN(numericValue)) {
+        setEditedGasValues(prev => ({
+          ...prev,
+          [gas.id!]: numericValue
+        }));
+      }
+    }
   };
 
   // Save individual inlet condition
@@ -443,11 +443,63 @@ export function CaseDetails({
     }
   };
 
-  // Update the saveAllGasCompositions function
-  const [assumeCompositionAs100, setAssumeCompositionAs100] = useState(false);
-  const [showWarningDialog, setShowWarningDialog] = useState(false);
-  const [warningMessage, setWarningMessage] = useState("");
+  // Add this function to fetch and update gas compositions
+  const refreshGasCompositions = async () => {
+    try {
+      const token = localStorage.getItem('access_token');
+      if (!token) {
+        throw new Error('Authentication required');
+      }
 
+      const gasCompositionsResponse = await fetch(
+        `https://gaxmixer-production.up.railway.app/projects/${projectId}/gas_compositions3`,
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+
+      if (!gasCompositionsResponse.ok) {
+        throw new Error('Failed to fetch updated gas compositions');
+      }
+
+      const gasCompositionsData = await gasCompositionsResponse.json();
+      console.log('Fetched gas compositions from backend:', gasCompositionsData);
+
+      // Find the current case's gas compositions
+      const currentCase = gasCompositionsData.projects[0].cases.find(
+        (c: any) => c.case_id === caseId
+      );
+
+      if (currentCase) {
+        // Transform and set gas compositions exactly as returned from backend
+        const updatedGasComposition = currentCase.gas_compositions.map((gas: any) => ({
+          id: gas.gas_id,
+          name: gas.gas_name,
+          value: gas.amount,
+          unit: gas.unit
+        }));
+
+        // Update the state with the backend data
+        setGasComposition(updatedGasComposition);
+        // Also update filtered gases to maintain the same order
+        setFilteredGases(updatedGasComposition.filter((gas: GasComposition) => 
+          gas.name.toLowerCase().includes(searchTerm.toLowerCase())
+        ));
+      }
+    } catch (error) {
+      console.error('Error refreshing gas compositions:', error);
+      toast({
+        title: "Error",
+        description: "Failed to refresh gas compositions",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Update the saveAllGasCompositions function
   const saveAllGasCompositions = async () => {
     try {
       // Calculate total composition from edited values or current values
@@ -455,7 +507,6 @@ export function CaseDetails({
         ? Object.values(editedGasValues).reduce((sum, val) => sum + (val || 0), 0)
         : gasComposition.reduce((sum, gas) => sum + gas.value, 0);
       
-      // Show warning ONLY if total is less than 100 and assume100 is not checked
       if (totalComposition < 100 && !assumeCompositionAs100) {
         setWarningMessage(`Current total is ${totalComposition.toFixed(2)}%. Please ensure sum is 100% or select 'Assume composition as 100%'`);
         setShowWarningDialog(true);
@@ -469,11 +520,15 @@ export function CaseDetails({
         throw new Error('Authentication required');
       }
       
-      const payload = gasComposition.map((gas, index) => ({
-        gas_id: gas.id || 0,
-        amount: editedGasValues[index] !== undefined ? editedGasValues[index] : gas.value,
-        unit: editedGasUnits[index] || gas.unit
-      }));
+      // Create payload maintaining the original gas order
+      const payload = gasComposition.map((gas) => {
+        const editedValue = gas.id !== undefined ? editedGasValues[gas.id] : gas.value;
+        return {
+          gas_id: gas.id ?? 0,
+          amount: editedValue !== undefined ? Number(editedValue) : Number(gas.value),
+          unit: editedGasUnits[gas.id ?? 0] || gas.unit || "mol %"
+        };
+      });
 
       // If assume100 is checked and total is less than 100%, normalize the values
       if (assumeCompositionAs100 && totalComposition < 100) {
@@ -481,74 +536,118 @@ export function CaseDetails({
         payload.forEach(item => {
           item.amount = Number((item.amount * normalizationFactor).toFixed(3));
         });
-        
-        toast({
-          title: "Info",
-          description: "Gas compositions have been normalized to sum to 100%",
-          variant: "default",
-        });
       }
 
-      console.log('Sending payload:', payload);
+      console.log('Sending gas composition payload:', payload);
         
-        const response = await fetch(
+      const response = await fetch(
         `https://gaxmixer-production.up.railway.app/projects/${projectId}/cases/${caseId}/gases/update_new/`, 
-          {
-            method: 'PUT',
-            headers: {
-              'Authorization': `Bearer ${token}`,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(payload)
-          }
-        );
+        {
+          method: 'PUT',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(payload)
+        }
+      );
         
-        if (!response.ok) {
-        throw new Error('Failed to update gas compositions');
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Error response:', errorText);
+        throw new Error(`Failed to update gas compositions: ${response.status} ${errorText}`);
       }
 
-      // Get the updated data from response
-      const updatedData = await response.json();
-      console.log('Response data:', updatedData);
+      // After successful update, refresh gas compositions from backend
+      await refreshGasCompositions();
       
-      // Ensure updatedData is an array
-      const updatedGases = Array.isArray(updatedData) ? updatedData : [];
-      
-      // Update local state with the response data
-      const updatedGasComposition = gasComposition.map(gas => {
-        const updatedGas = updatedGases.find(updated => updated.gas_id === gas.id);
-        if (updatedGas) {
-          return {
-            ...gas,
-            value: updatedGas.amount,
-            unit: updatedGas.unit
-          };
-        }
-        return gas;
-      });
-      
-      setGasComposition(updatedGasComposition);
       setEditingGasSection(false);
       setEditedGasValues({});
       setEditedGasUnits({});
       
       toast({
         title: "Success",
-        description: "All gas compositions updated successfully",
+        description: "Gas compositions updated successfully",
         variant: "default",
       });
       
       if (onCalculate) {
         onCalculate();
       }
-
-      // Refresh the page after successful save
-      window.location.reload();
     } catch (error) {
       console.error('Error updating gas compositions:', error);
       toast({
         title: "Error",
-        description: "Failed to update gas compositions",
+        description: error instanceof Error ? error.message : "Failed to update gas compositions",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Update the saveGasComposition function
+  const saveGasComposition = async (index: number) => {
+    try {
+      setIsSaving(true);
+      const token = localStorage.getItem('access_token');
+      
+      if (!token) {
+        throw new Error('Authentication required');
+      }
+
+      const gas = gasComposition[index];
+      if (gas.id === undefined) {
+        throw new Error('Gas ID is required');
+      }
+      
+      const payload = [{
+        gas_id: gas.id,
+        amount: Number(editValue),
+        unit: editedGasUnits[gas.id] || gas.unit || "mol %"
+      }];
+
+      console.log('Sending individual gas update payload:', payload);
+      
+      const response = await fetch(
+        `https://gaxmixer-production.up.railway.app/projects/${projectId}/cases/${caseId}/gases/update_new/`, 
+        {
+          method: 'PUT',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(payload)
+        }
+      );
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Error response:', errorText);
+        throw new Error(`Failed to update gas composition: ${response.status} ${errorText}`);
+      }
+
+      // After successful update, refresh gas compositions from backend
+      await refreshGasCompositions();
+      
+      setEditingGas(null);
+      setEditedGasValues({});
+      setEditedGasUnits({});
+      
+      toast({
+        title: "Success",
+        description: `Gas composition updated successfully`,
+        variant: "default",
+      });
+      
+      if (onCalculate) {
+        onCalculate();
+      }
+    } catch (error) {
+      console.error('Error updating gas composition:', error);
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to update gas composition",
         variant: "destructive",
       });
     } finally {
@@ -565,207 +664,6 @@ export function CaseDetails({
     }, {});
 
     return Object.entries(unitCounts).reduce((a, b) => a[1] > b[1] ? a : b)[0] || "mol %";
-  };
-
-  // Update the saveGasComposition function for individual updates
-  const saveGasComposition = async (index: number) => {
-    try {
-      setIsSaving(true);
-      const token = localStorage.getItem('access_token');
-      
-      if (!token) {
-        throw new Error('Authentication required');
-      }
-
-      const gas = gasComposition[index];
-      if (!gas.id) {
-        throw new Error('Gas ID is required');
-      }
-      
-      // Create payload in the new format
-      const payload = [{
-        gas_id: gas.id,
-        amount: Number(editValue),
-        unit: editedGasUnits[index] || gas.unit
-      }];
-
-      console.log('Sending payload:', payload);
-      
-      const response = await fetch(
-        `https://gaxmixer-production.up.railway.app/projects/${projectId}/cases/${caseId}/gases/update_new/`, 
-        {
-          method: 'PUT',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(payload)
-        }
-      );
-      
-      if (!response.ok) {
-        throw new Error('Failed to update gas composition');
-      }
-
-      // Get the updated data from response
-      const updatedData = await response.json();
-      console.log('Response data:', updatedData);
-      
-      // Ensure updatedData is an array and get the first item
-      const updatedGases = Array.isArray(updatedData) ? updatedData : [];
-      const updatedGas = updatedGases[0];
-
-      if (updatedGas) {
-      // Update local state
-      const updatedGasComposition = [...gasComposition];
-      updatedGasComposition[index] = {
-        ...updatedGasComposition[index],
-          value: updatedGas.amount,
-          unit: updatedGas.unit
-      };
-      
-      setGasComposition(updatedGasComposition);
-      }
-      
-      setEditingGas(null);
-      setEditedGasUnits({});
-      
-      toast({
-        title: "Success",
-        description: `${gas.name} composition updated successfully`,
-        variant: "default",
-      });
-      
-      if (onCalculate) {
-        onCalculate();
-      }
-    } catch (error) {
-      console.error('Error updating gas composition:', error);
-      toast({
-        title: "Error",
-        description: "Failed to update gas composition",
-        variant: "destructive",
-      });
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent, type: 'inlet' | 'gas', index: number) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      if (type === 'inlet') {
-        saveInletCondition(index);
-      } else {
-        saveGasComposition(index);
-      }
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
-      if (type === 'inlet') {
-        setEditingInlet(null);
-      } else {
-        setEditingGas(null);
-      }
-    }
-  };
-
-  // Clear success message after 5 seconds
-  useEffect(() => {
-    let timer: NodeJS.Timeout;
-    if (calculationSuccess) {
-      timer = setTimeout(() => {
-        setCalculationSuccess(false);
-      }, 5000);
-    }
-    return () => {
-      if (timer) clearTimeout(timer);
-    };
-  }, [calculationSuccess]);
-
-  // Update the calculate function
-  const calculateResults = async () => {
-    try {
-      setIsCalculating(true);
-      setCalculationSuccess(false);
-      const token = localStorage.getItem('access_token');
-      
-      if (!token) {
-        throw new Error('Authentication required');
-      }
-
-      console.log('Calculating results for:', {
-        projectId,
-        caseId,
-        endpoint: `https://gaxmixer-production.up.railway.app/projects/${projectId}/cases/${caseId}/calculate/`
-      });
-      
-      // First, ensure we have valid inlet conditions and gas compositions
-      if (inletConditions.length === 0) {
-        throw new Error('No inlet conditions available');
-      }
-
-      if (gasComposition.length === 0) {
-        throw new Error('No gas composition available');
-      }
-      
-      const response = await fetch(
-        `https://gaxmixer-production.up.railway.app/projects/${projectId}/cases/${caseId}/calculate/`, 
-        {
-          method: 'PUT',  // Changed from POST to PUT
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            project_id: projectId,
-            case_id: caseId
-          })
-        }
-      );
-      
-      const responseText = await response.text();
-      console.log('Raw response:', responseText);
-      
-      if (!response.ok) {
-        console.error('Calculate response error:', {
-          status: response.status,
-          statusText: response.statusText,
-          response: responseText
-        });
-        throw new Error(`Failed to calculate results: ${response.status} ${response.statusText}`);
-      }
-
-      let result;
-      try {
-        result = responseText ? JSON.parse(responseText) : null;
-      } catch (e) {
-        console.warn('Could not parse response as JSON:', e);
-      }
-      
-      console.log('Calculate response success:', result);
-      
-      toast({
-        title: "Calculation successful",
-        description: "The results have been calculated successfully.",
-        variant: "default",
-      });
-      
-      setCalculationSuccess(true);
-      
-      // Call the callback to refresh data
-      if (onCalculate) {
-        onCalculate();
-      }
-    } catch (err) {
-      console.error('Error calculating results:', err);
-      toast({
-        title: "Calculation failed",
-        description: err instanceof Error ? err.message : "An error occurred during calculation",
-        variant: "destructive",
-      });
-    } finally {
-      setIsCalculating(false);
-    }
   };
 
   // Update the formatCalculatedValue function
@@ -892,7 +790,7 @@ export function CaseDetails({
         guarantee_point: guaranteePoint,
         suppress: newSuppress
       };
-
+      
       const response = await fetch(
         `https://gaxmixer-production.up.railway.app/projects/${projectId}/cases/${caseId}/inlet/${inletConditionId}/update/`,
         {
@@ -904,20 +802,20 @@ export function CaseDetails({
           body: JSON.stringify(payload)
         }
       );
-
+      
       if (!response.ok) {
         throw new Error('Failed to update suppress setting');
       }
 
       const updatedData = await response.json();
       console.log('Updated data:', updatedData);
-
+      
       toast({
         title: "Success",
         description: "Suppress setting updated successfully",
         variant: "default",
       });
-
+      
       if (onCalculate) {
         onCalculate();
       }
@@ -952,22 +850,138 @@ export function CaseDetails({
   const [filteredGases, setFilteredGases] = useState<GasComposition[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
 
-  // Add this useEffect to sort and filter gases
+  // Update the useEffect that handles filtering to remove sorting
   useEffect(() => {
-    // Sort gases by gas_id
-    const sortedGases = [...gasComposition].sort((a, b) => {
-      const idA = a.id || 0;
-      const idB = b.id || 0;
-      return idA - idB;
-    });
-
-    // Filter gases based on search term
-    const filtered = sortedGases.filter(gas => 
+    // Remove sorting and just filter based on search term
+    const filtered = gasComposition.filter(gas => 
       gas.name.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
     setFilteredGases(filtered);
   }, [gasComposition, searchTerm]);
+
+  // Add missing state variables
+  const [showWarningDialog, setShowWarningDialog] = useState(false);
+  const [warningMessage, setWarningMessage] = useState("");
+  const [assumeCompositionAs100, setAssumeCompositionAs100] = useState(false);
+
+  // Add missing calculate results function
+  const calculateResults = async () => {
+    try {
+      setIsCalculating(true);
+      setCalculationSuccess(false);
+      const token = localStorage.getItem('access_token');
+      
+      if (!token) {
+        throw new Error('Authentication required');
+      }
+
+      console.log('Calculating results for:', {
+        projectId,
+        caseId,
+        endpoint: `https://gaxmixer-production.up.railway.app/projects/${projectId}/cases/${caseId}/calculate/`
+      });
+      
+      // First, ensure we have valid inlet conditions and gas compositions
+      if (inletConditions.length === 0) {
+        throw new Error('No inlet conditions available');
+      }
+
+      if (gasComposition.length === 0) {
+        throw new Error('No gas composition available');
+      }
+      
+      const response = await fetch(
+        `https://gaxmixer-production.up.railway.app/projects/${projectId}/cases/${caseId}/calculate/`, 
+        {
+          method: 'PUT',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            project_id: projectId,
+            case_id: caseId
+          })
+        }
+      );
+      
+      const responseText = await response.text();
+      console.log('Raw response:', responseText);
+      
+      if (!response.ok) {
+        console.error('Calculate response error:', {
+          status: response.status,
+          statusText: response.statusText,
+          response: responseText
+        });
+        throw new Error(`Failed to calculate results: ${response.status} ${response.statusText}`);
+      }
+
+      let result;
+      try {
+        result = responseText ? JSON.parse(responseText) : null;
+      } catch (e) {
+        console.warn('Could not parse response as JSON:', e);
+      }
+      
+      console.log('Calculate response success:', result);
+      
+      toast({
+        title: "Calculation successful",
+        description: "The results have been calculated successfully.",
+        variant: "default",
+      });
+      
+      setCalculationSuccess(true);
+      
+      // Call the callback to refresh data
+      if (onCalculate) {
+        onCalculate();
+      }
+    } catch (err) {
+      console.error('Error calculating results:', err);
+      toast({
+        title: "Calculation failed",
+        description: err instanceof Error ? err.message : "An error occurred during calculation",
+        variant: "destructive",
+      });
+    } finally {
+      setIsCalculating(false);
+    }
+  };
+
+  // Add missing handleKeyDown function
+  const handleKeyDown = (e: React.KeyboardEvent, type: 'inlet' | 'gas', index: number) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (type === 'inlet') {
+        saveInletCondition(index);
+      } else {
+        saveGasComposition(index);
+      }
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      if (type === 'inlet') {
+        setEditingInlet(null);
+      } else {
+        setEditingGas(null);
+      }
+    }
+  };
+
+  // Add useEffect for calculation success timeout
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (calculationSuccess) {
+      timer = setTimeout(() => {
+        setCalculationSuccess(false);
+      }, 5000);
+    }
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+  }, [calculationSuccess]);
 
   return (
     <>
@@ -1052,7 +1066,7 @@ export function CaseDetails({
             </TabsTrigger>
               <TabsTrigger value="inlet" className="text-xs data-[state=active]:bg-white data-[state=active]:text-blue-700">
                 Project Properties
-              </TabsTrigger>
+            </TabsTrigger>
             {calculatedProperties && (
               <TabsTrigger value="calculated" className="text-xs data-[state=active]:bg-white data-[state=active]:text-blue-700">
                 Calculated Properties
@@ -1353,7 +1367,9 @@ export function CaseDetails({
                             ) : editingGasSection ? (
                               <input
                                 type="number"
-                                value={editedGasValues[index] !== undefined ? editedGasValues[index] : gas.value}
+                                value={gas.id !== undefined && editedGasValues[gas.id] !== undefined ? 
+                                  editedGasValues[gas.id] : 
+                                  gas.value}
                                 onChange={(e) => handleGasValueChange(index, e.target.value)}
                                 className="w-full bg-white border border-blue-200 p-0.5 text-xs focus:ring-1 focus:ring-blue-300 rounded text-right"
                                 step="0.001"
@@ -1383,8 +1399,8 @@ export function CaseDetails({
                                 </select>
                               ) : (
                                 gas.unit
-                              )}
-                            </TableCell>
+                            )}
+                          </TableCell>
                         </TableRow>
                       ))}
                       <TableRow className="h-6 border-t border-blue-200">
@@ -1400,7 +1416,7 @@ export function CaseDetails({
                         </TableCell>
                           <TableCell className="py-0.5 text-xs font-medium text-right">
                             {getTotalUnit()}
-                          </TableCell>
+                        </TableCell>
                       </TableRow>
                     </>
                   )}
